@@ -24,6 +24,7 @@ export default function CrmPage() {
   const [cliente, setCliente] = useState('');
   const [canal, setCanal] = useState<'ONLINE' | 'OFFLINE'>('ONLINE');
   const [monto, setMonto] = useState(0);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
   const crearOportunidad = () => {
     if (!cliente || monto <= 0) return;
@@ -42,9 +43,27 @@ export default function CrmPage() {
   };
 
   const moverEtapa = (id: string, nuevaEtapa: EtapaCRM) => {
-    setOportunidades(
-      oportunidades.map((op) => (op.id === id ? { ...op, etapa: nuevaEtapa } : op))
+    setOportunidades((prev) =>
+      prev.map((op) => (op.id === id ? { ...op, etapa: nuevaEtapa } : op))
     );
+  };
+
+  const moverPaso = (id: string, direccion: 'IZQ' | 'DER') => {
+    const op = oportunidades.find((o) => o.id === id);
+    if (!op) return;
+    const index = ETAPAS.indexOf(op.etapa);
+    const nuevoIndex = direccion === 'DER' ? index + 1 : index - 1;
+    if (nuevoIndex >= 0 && nuevoIndex < ETAPAS.length) {
+      moverEtapa(id, ETAPAS[nuevoIndex]);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, etapaDestino: EtapaCRM) => {
+    e.preventDefault();
+    if (draggedId) {
+      moverEtapa(draggedId, etapaDestino);
+      setDraggedId(null);
+    }
   };
 
   const calcularTotalEtapa = (etapa: EtapaCRM) =>
@@ -58,7 +77,6 @@ export default function CrmPage() {
         Pipeline CRM - Retail Media
       </h1>
 
-      {/* FORMULARIO DE NUEVA OPORTUNIDAD */}
       <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.75rem' }}>Nueva Oportunidad</h2>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -100,10 +118,21 @@ export default function CrmPage() {
         </div>
       </div>
 
-      {/* TABLERO PIPELINE */}
+      {/* TABLERO DRAG & DROP */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         {ETAPAS.map((etapa) => (
-          <div key={etapa} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', backgroundColor: '#fafafa', padding: '1rem' }}>
+          <div
+            key={etapa}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => handleDrop(e, etapa)}
+            style={{
+              border: '2px dashed #cbd5e1',
+              borderRadius: '8px',
+              backgroundColor: '#fafafa',
+              padding: '1rem',
+              minHeight: '350px',
+            }}
+          >
             <h3 style={{ fontSize: '0.875rem', fontWeight: 'bold', borderBottom: '2px solid #cbd5e1', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
               {etapa.replace('_', ' ')}
             </h3>
@@ -113,22 +142,47 @@ export default function CrmPage() {
 
             {oportunidades
               .filter((op) => op.etapa === etapa)
-              .map((op) => (
-                <div key={op.id} style={{ backgroundColor: '#fff', border: '1px solid #cbd5e1', padding: '0.75rem', borderRadius: '6px', marginBottom: '0.75rem' }}>
-                  <div style={{ fontWeight: 'bold' }}>{op.cliente}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Canal: {op.canal}</div>
-                  <div style={{ fontWeight: '600', marginTop: '0.25rem', color: '#0f172a' }}>${op.monto.toLocaleString()}</div>
-                  <select
-                    value={op.etapa}
-                    onChange={(e) => moverEtapa(op.id, e.target.value as EtapaCRM)}
-                    style={{ marginTop: '0.5rem', width: '100%', fontSize: '0.75rem', padding: '0.2rem' }}
+              .map((op) => {
+                const index = ETAPAS.indexOf(op.etapa);
+                return (
+                  <div
+                    key={op.id}
+                    draggable
+                    onDragStart={() => setDraggedId(op.id)}
+                    style={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #cbd5e1',
+                      padding: '0.75rem',
+                      borderRadius: '6px',
+                      marginBottom: '0.75rem',
+                      cursor: 'grab',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    }}
                   >
-                    {ETAPAS.map((e) => (
-                      <option key={e} value={e}>{e.replace('_', ' ')}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+                    <div style={{ fontWeight: 'bold' }}>{op.cliente}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Canal: {op.canal}</div>
+                    <div style={{ fontWeight: '600', marginTop: '0.25rem', color: '#0f172a' }}>${op.monto.toLocaleString()}</div>
+                    
+                    {/* BOTONES DE MOVIMIENTO RÁPIDO */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem' }}>
+                      <button
+                        onClick={() => moverPaso(op.id, 'IZQ')}
+                        disabled={index === 0}
+                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: index === 0 ? 'not-allowed' : 'pointer' }}
+                      >
+                        ←
+                      </button>
+                      <button
+                        onClick={() => moverPaso(op.id, 'DER')}
+                        disabled={index === ETAPAS.length - 1}
+                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', cursor: index === ETAPAS.length - 1 ? 'not-allowed' : 'pointer' }}
+                      >
+                        →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         ))}
       </div>
