@@ -3,56 +3,43 @@
 import { useState } from 'react';
 import { CATALOGO_RETAIL_MEDIA } from '../../data/catalogo';
 
-interface ItemCotizacion {
-  id: string;
-  canal: string;
-  categoria: string;
-  elemento: string;
-  especificaciones: string;
-  cantidad: number;
-  precioUnitario: number;
-  subtotal: number;
-}
-
 export default function CotizadorPage() {
-  const [canal, setCanal] = useState<'ONLINE' | 'OFFLINE' | ''>('');
+  const [canal, setCanal] = useState<string>('');
   const [categoriaId, setCategoriaId] = useState<string>('');
   const [elementoId, setElementoId] = useState<string>('');
   const [cantidad, setCantidad] = useState<number>(1);
   const [precioUnitario, setPrecioUnitario] = useState<number>(0);
-  const [items, setItems] = useState<ItemCotizacion[]>([]);
+  const [items, setItems] = useState<any[]>([]);
 
-  // Búsqueda del canal
-  const canalActual = CATALOGO_RETAIL_MEDIA.find((c) => c.canal === canal);
-  const categoriasDisponibles = canalActual ? canalActual.categorias : [];
+  // Búsqueda directa en catálogo
+  const canalData = CATALOGO_RETAIL_MEDIA.find((item) => item.canal === canal);
+  const listaCategorias = canalData ? canalData.categorias : [];
 
-  // Búsqueda de la categoría
-  const categoriaActual = categoriasDisponibles.find((cat) => cat.id === categoriaId);
-  const elementosDisponibles = categoriaActual ? categoriaActual.elementos : [];
+  const categoriaData = listaCategorias.find((cat) => cat.id === categoriaId);
+  const listaElementos = categoriaData ? categoriaData.elementos : [];
 
-  // Búsqueda del elemento
-  const elementoActual = elementosDisponibles.find((el) => el.id === elementoId);
+  const elementoData = listaElementos.find((el) => el.id === elementoId);
 
-  const handleCanalChange = (val: string) => {
-    setCanal(val as 'ONLINE' | 'OFFLINE' | '');
+  const handleCanalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setCanal(e.target.value);
     setCategoriaId('');
     setElementoId('');
   };
 
-  const handleCategoriaChange = (val: string) => {
-    setCategoriaId(val);
+  const handleCategoriaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setCategoriaId(e.target.value);
     setElementoId('');
   };
 
   const agregarItem = () => {
-    if (!canal || !categoriaActual || !elementoActual || cantidad <= 0) return;
+    if (!canal || !categoriaData || !elementoData || cantidad <= 0) return;
 
-    const nuevoItem: ItemCotizacion = {
+    const nuevoItem = {
       id: crypto.randomUUID(),
       canal,
-      categoria: categoriaActual.nombre,
-      elemento: elementoActual.nombre,
-      especificaciones: elementoActual.especificaciones,
+      categoria: categoriaData.nombre,
+      elemento: elementoData.nombre,
+      especificaciones: elementoData.especificaciones,
       cantidad,
       precioUnitario,
       subtotal: cantidad * precioUnitario,
@@ -65,7 +52,7 @@ export default function CotizadorPage() {
   };
 
   const eliminarItem = (id: string) => {
-    setItems(items.filter((i) => i.id !== id));
+    setItems(items.filter((item) => item.id !== id));
   };
 
   const totalCotizacion = items.reduce((acc, curr) => acc + curr.subtotal, 0);
@@ -83,8 +70,9 @@ export default function CotizadorPage() {
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>1. Canal</label>
             <select
               value={canal}
-              onChange={(e) => handleCanalChange(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+              onChange={handleCanalChange}
+              autoComplete="off"
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff' }}
             >
               <option value="">-- Seleccionar Canal --</option>
               <option value="ONLINE">Online (E-Commerce)</option>
@@ -97,12 +85,20 @@ export default function CotizadorPage() {
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>2. Categoría</label>
             <select
               value={categoriaId}
-              onChange={(e) => handleCategoriaChange(e.target.value)}
-              disabled={!canal}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: !canal ? '#e2e8f0' : '#fff' }}
+              onChange={handleCategoriaChange}
+              disabled={!canal || listaCategorias.length === 0}
+              autoComplete="off"
+              style={{ 
+                width: '100%', 
+                padding: '0.5rem', 
+                borderRadius: '4px', 
+                border: '1px solid #cbd5e1', 
+                backgroundColor: !canal ? '#e2e8f0' : '#fff',
+                cursor: !canal ? 'not-allowed' : 'pointer'
+              }}
             >
               <option value="">-- Seleccionar Categoría --</option>
-              {categoriasDisponibles.map((cat) => (
+              {listaCategorias.map((cat) => (
                 <option key={cat.id} value={cat.id}>{cat.nombre}</option>
               ))}
             </select>
@@ -114,21 +110,29 @@ export default function CotizadorPage() {
             <select
               value={elementoId}
               onChange={(e) => setElementoId(e.target.value)}
-              disabled={!categoriaId}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: !categoriaId ? '#e2e8f0' : '#fff' }}
+              disabled={!categoriaId || listaElementos.length === 0}
+              autoComplete="off"
+              style={{ 
+                width: '100%', 
+                padding: '0.5rem', 
+                borderRadius: '4px', 
+                border: '1px solid #cbd5e1', 
+                backgroundColor: !categoriaId ? '#e2e8f0' : '#fff',
+                cursor: !categoriaId ? 'not-allowed' : 'pointer'
+              }}
             >
               <option value="">-- Seleccionar Elemento --</option>
-              {elementosDisponibles.map((el) => (
+              {listaElementos.map((el) => (
                 <option key={el.id} value={el.id}>{el.nombre}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {elementoActual && (
+        {elementoData && (
           <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
             <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#334155' }}>
-              <strong>Especificaciones:</strong> {elementoActual.especificaciones}
+              <strong>Especificaciones:</strong> {elementoData.especificaciones}
             </p>
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
@@ -162,6 +166,7 @@ export default function CotizadorPage() {
         )}
       </div>
 
+      {/* RESUMEN DE LA PROPUESTA */}
       <div>
         <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '1rem' }}>2. Resumen de la Propuesta</h2>
         {items.length === 0 ? (
