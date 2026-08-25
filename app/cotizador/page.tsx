@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CATALOGO_RETAIL_MEDIA, CategoriaCatalogo, ElementoCatalogo } from '../../data/catalogo';
+import { CATALOGO_RETAIL_MEDIA } from '../../data/catalogo';
 
 interface ItemCotizacion {
   id: string;
@@ -22,33 +22,37 @@ export default function CotizadorPage() {
   const [precioUnitario, setPrecioUnitario] = useState<number>(0);
   const [items, setItems] = useState<ItemCotizacion[]>([]);
 
-  // Filtrado dinámico del embudo
-  const canalSeleccionado = CATALOGO_RETAIL_MEDIA.find((c) => c.canal === canal);
-  const categoriasDisponibles: CategoriaCatalogo[] = canalSeleccionado ? canalSeleccionado.categorias : [];
-  const categoriaSeleccionada = categoriasDisponibles.find((cat) => cat.id === categoriaId);
-  const elementosDisponibles: ElementoCatalogo[] = categoriaSeleccionada ? categoriaSeleccionada.elementos : [];
-  const elementoSeleccionado = elementosDisponibles.find((el) => el.id === elementoId);
+  // Búsqueda del canal
+  const canalActual = CATALOGO_RETAIL_MEDIA.find((c) => c.canal === canal);
+  const categoriasDisponibles = canalActual ? canalActual.categorias : [];
 
-  const handleCanalChange = (nuevoCanal: 'ONLINE' | 'OFFLINE') => {
-    setCanal(nuevoCanal);
+  // Búsqueda de la categoría
+  const categoriaActual = categoriasDisponibles.find((cat) => cat.id === categoriaId);
+  const elementosDisponibles = categoriaActual ? categoriaActual.elementos : [];
+
+  // Búsqueda del elemento
+  const elementoActual = elementosDisponibles.find((el) => el.id === elementoId);
+
+  const handleCanalChange = (val: string) => {
+    setCanal(val as 'ONLINE' | 'OFFLINE' | '');
     setCategoriaId('');
     setElementoId('');
   };
 
-  const handleCategoriaChange = (nuevaCatId: string) => {
-    setCategoriaId(nuevaCatId);
+  const handleCategoriaChange = (val: string) => {
+    setCategoriaId(val);
     setElementoId('');
   };
 
   const agregarItem = () => {
-    if (!canal || !categoriaSeleccionada || !elementoSeleccionado || cantidad <= 0) return;
+    if (!canal || !categoriaActual || !elementoActual || cantidad <= 0) return;
 
     const nuevoItem: ItemCotizacion = {
       id: crypto.randomUUID(),
       canal,
-      categoria: categoriaSeleccionada.nombre,
-      elemento: elementoSeleccionado.nombre,
-      especificaciones: elementoSeleccionado.especificaciones,
+      categoria: categoriaActual.nombre,
+      elemento: elementoActual.nombre,
+      especificaciones: elementoActual.especificaciones,
       cantidad,
       precioUnitario,
       subtotal: cantidad * precioUnitario,
@@ -61,7 +65,7 @@ export default function CotizadorPage() {
   };
 
   const eliminarItem = (id: string) => {
-    setItems(items.filter((item) => item.id !== id));
+    setItems(items.filter((i) => i.id !== id));
   };
 
   const totalCotizacion = items.reduce((acc, curr) => acc + curr.subtotal, 0);
@@ -70,48 +74,50 @@ export default function CotizadorPage() {
     <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '1.8rem', marginBottom: '1.5rem', fontWeight: 'bold' }}>Cotizador Retail Media</h1>
 
-      {/* EMBUDO DE SELECCIÓN */}
       <div style={{ border: '1px solid #e2e8f0', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem', backgroundColor: '#f8fafc' }}>
         <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '1rem' }}>1. Seleccionar Espacio</h2>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          {/* PASO 1: CANAL */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>Canal</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>1. Canal</label>
             <select
               value={canal}
-              onChange={(e) => handleCanalChange(e.target.value as 'ONLINE' | 'OFFLINE')}
+              onChange={(e) => handleCanalChange(e.target.value)}
               style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
             >
-              <option value="">-- Seleccionar --</option>
+              <option value="">-- Seleccionar Canal --</option>
               <option value="ONLINE">Online (E-Commerce)</option>
               <option value="OFFLINE">Offline (In Store)</option>
             </select>
           </div>
 
+          {/* PASO 2: CATEGORÍA */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>Categoría</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>2. Categoría</label>
             <select
               value={categoriaId}
               onChange={(e) => handleCategoriaChange(e.target.value)}
               disabled={!canal}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: !canal ? '#e2e8f0' : '#fff' }}
             >
-              <option value="">-- Seleccionar --</option>
+              <option value="">-- Seleccionar Categoría --</option>
               {categoriasDisponibles.map((cat) => (
                 <option key={cat.id} value={cat.id}>{cat.nombre}</option>
               ))}
             </select>
           </div>
 
+          {/* PASO 3: ELEMENTO */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>Elemento / Espacio</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>3. Elemento</label>
             <select
               value={elementoId}
               onChange={(e) => setElementoId(e.target.value)}
               disabled={!categoriaId}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+              style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: !categoriaId ? '#e2e8f0' : '#fff' }}
             >
-              <option value="">-- Seleccionar --</option>
+              <option value="">-- Seleccionar Elemento --</option>
               {elementosDisponibles.map((el) => (
                 <option key={el.id} value={el.id}>{el.nombre}</option>
               ))}
@@ -119,10 +125,10 @@ export default function CotizadorPage() {
           </div>
         </div>
 
-        {elementoSeleccionado && (
-          <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#475569' }}>
-              <strong>Especificaciones:</strong> {elementoSeleccionado.especificaciones}
+        {elementoActual && (
+          <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#334155' }}>
+              <strong>Especificaciones:</strong> {elementoActual.especificaciones}
             </p>
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
@@ -131,7 +137,7 @@ export default function CotizadorPage() {
                   type="number"
                   min="1"
                   value={cantidad}
-                  onChange={(e) => setCantidad(Number(e.target.value))}
+                  onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
                   style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
                 />
               </div>
@@ -156,7 +162,6 @@ export default function CotizadorPage() {
         )}
       </div>
 
-      {/* RESUMEN DE LA COTIZACIÓN */}
       <div>
         <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '1rem' }}>2. Resumen de la Propuesta</h2>
         {items.length === 0 ? (
@@ -166,7 +171,7 @@ export default function CotizadorPage() {
             <thead>
               <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
                 <th style={{ padding: '0.75rem' }}>Canal</th>
-                <th style={{ padding: '0.75rem' }}>Espacio / Categoría</th>
+                <th style={{ padding: '0.75rem' }}>Espacio</th>
                 <th style={{ padding: '0.75rem' }}>Especificaciones</th>
                 <th style={{ padding: '0.75rem' }}>Cant.</th>
                 <th style={{ padding: '0.75rem' }}>Precio U.</th>
