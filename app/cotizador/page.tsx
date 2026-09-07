@@ -1,354 +1,549 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-
-// CATÁLOGO INTEGRADO AUTÓNOMO (Sin dependencias externas)
-const CATALOGO = [
-  {
-    canal: 'ONLINE',
-    nombreCanal: 'Online (E-Commerce)',
-    categorias: [
-      {
-        id: 'cat-atf',
-        nombre: 'Banner Nativo Superior (ATF)',
-        elementos: [
-          { id: 'on-atf-cat', nombre: 'Category Native ATF', especificaciones: '1240x140 px (Desktop) / 400x150 px (Mobile)' },
-          { id: 'on-atf-src', nombre: 'Search Native ATF', especificaciones: '1240x140 px (Desktop) / 400x150 px (Mobile)' },
-          { id: 'on-atf-home', nombre: 'Home Native', especificaciones: '1240x140 px (Desktop) / 400x150 px (Mobile)' },
-        ],
-      },
-      {
-        id: 'cat-side',
-        nombre: 'Banner Nativo Lateral (Side)',
-        elementos: [
-          { id: 'on-side-cat', nombre: 'Category Native Side', especificaciones: '232x400 px (Desktop) / 330x116 px (Mobile)' },
-          { id: 'on-side-src', nombre: 'Search Native Side', especificaciones: '232x400 px (Desktop) / 330x116 px (Mobile)' },
-        ],
-      },
-      {
-        id: 'cat-sponsored',
-        nombre: 'Productos Patrocinados',
-        elementos: [
-          { id: 'on-sp-cat', nombre: 'Sponsored Product Category', especificaciones: 'Grilla de productos (pos. 2 y 12 / 2 y 8)' },
-          { id: 'on-sp-src', nombre: 'Sponsored Product Search', especificaciones: 'Match exacto/frase en motor de búsqueda' },
-        ],
-      },
-      {
-        id: 'cat-home-spec',
-        nombre: 'Banners Especiales Home',
-        elementos: [
-          { id: 'on-maxi', nombre: 'Home Maxi Pedido', especificaciones: '1920x325 px (Desktop) / 718x318 px (Mobile)' },
-          { id: 'on-serv', nombre: 'Home Servicios Carrefour', especificaciones: '1920x420 px (Desktop) / 720x672 px (Mobile)' },
-          { id: 'on-set-home', nombre: 'Banner X Set Home', especificaciones: '232x400 px / 610x315 px' },
-        ],
-      },
-      {
-        id: 'cat-nav',
-        nombre: 'Navegación y Directo',
-        elementos: [
-          { id: 'on-menu', nombre: 'Menu Native', especificaciones: '2100x261 px (Desktop) / 1125x408 px (Mobile)' },
-          { id: 'on-email', nombre: 'Email MKT', especificaciones: '1000x450 px (Max 50kb)' },
-        ],
-      },
-    ],
-  },
-  {
-    canal: 'OFFLINE',
-    nombreCanal: 'Offline (In Store)',
-    categorias: [
-      {
-        id: 'cat-dooh',
-        nombre: 'Digital & DOOH',
-        elementos: [
-          { id: 'off-led-ext', nombre: 'Pantalla LED Exterior', especificaciones: '960x576 px, video 10 seg' },
-          { id: 'off-led-int', nombre: 'Pantalla LED Interior', especificaciones: '576x384 px, video 10 seg' },
-          { id: 'off-cubo-led', nombre: 'Cubo LED Interior', especificaciones: '384x384 px por cara (Tienda 2)' },
-          { id: 'off-gondola-dig', nombre: 'Tematización Digital de Góndola', especificaciones: 'Video mp4 en módulos de góndola' },
-        ],
-      },
-      {
-        id: 'cat-stoppers',
-        nombre: 'Stoppers & Góndola',
-        elementos: [
-          { id: 'off-stop-std', nombre: 'Stopper Estándar', especificaciones: '20x40 cm / 15x70 cm' },
-          { id: 'off-stop-xl', nombre: 'Stopper XL', especificaciones: '0.2x1.0 mt' },
-          { id: 'off-stop-led', nombre: 'Stopper LED', especificaciones: '0.2x1.0 mt con marco ilumando' },
-          { id: 'off-stop-hel', nombre: 'Stopper de Heladera', especificaciones: '18x36 cm' },
-          { id: 'off-flejes', nombre: 'Flejes de Góndola', especificaciones: '65x3.5 cm / 77x7.5 cm (Mayorista)' },
-          { id: 'off-movies', nombre: 'Movies / Saltarines', especificaciones: 'Formato dinámico sobre góndola' },
-        ],
-      },
-      {
-        id: 'cat-arcos',
-        nombre: 'Estructuras & Arcos',
-        elementos: [
-          { id: 'off-arco-min', nombre: 'Arco en Minorista', especificaciones: 'MDF 10mm + Vinilo Blackout (0.3x2.6x0.4 mt)' },
-          { id: 'off-arco-may', nombre: 'Arco en Mayorista', especificaciones: 'MDF 10mm + Vinilo Blackout (0.3x3.0x0.4 mt)' },
-          { id: 'off-top-banner', nombre: 'Top Banner LED', especificaciones: 'Cabecera 1.3x0.4 mt + 2 Stoppers LED' },
-          { id: 'off-cat-win', nombre: 'Category Window', especificaciones: 'Marco corrugado plástico 1.3x2.8 mt' },
-          { id: 'off-cat-med', nombre: 'Category Media', especificaciones: 'Marco de góndola >2.5 m² comunicación' },
-        ],
-      },
-      {
-        id: 'cat-transito',
-        nombre: 'Tránsito & Accesos',
-        elementos: [
-          { id: 'off-floor', nombre: 'Floor Media', especificaciones: '1 m² ó 2 m² con reserva blanca de 1cm' },
-          { id: 'off-pasarela', nombre: 'Pasarela Espectacular', especificaciones: '10x1.25 mt en vinilo de alto tránsito' },
-          { id: 'off-alarm', nombre: 'Alarm Media', especificaciones: 'Fundas de lona sobre alarmas de ingreso' },
-          { id: 'off-door', nombre: 'Door Media', especificaciones: 'Vinilo microperforado en puertas de acceso (8 m²)' },
-          { id: 'off-escaleras', nombre: 'Escaleras Mecánicas', especificaciones: 'Vinilo lateral + Bastidor 7.18x2.04 mt' },
-          { id: 'off-rampas', nombre: 'Rampas', especificaciones: 'Adhesivo gran formato en accesos a sala' },
-          { id: 'off-changuera', nombre: 'Changuera', especificaciones: 'Lona vinílica / Vinilo blackout en changueras' },
-          { id: 'off-cart-med', nombre: 'Cart Media', especificaciones: 'Pai troquelado en frente/lateral de changuitos' },
-        ],
-      },
-      {
-        id: 'cat-exterior',
-        nombre: 'Exteriores & Vía Pública',
-        elementos: [
-          { id: 'off-chupete', nombre: 'Chupete', especificaciones: '1.10x1.48 mt transiluminado' },
-          { id: 'off-chupete-xl', nombre: 'Chupete XL', especificaciones: '1.20x1.75 mt transiluminado' },
-          { id: 'off-arco-ext', nombre: 'Arco Exterior', especificaciones: 'Estructura en ingreso vehicular (9x6 mt)' },
-          { id: 'off-cartel-front', nombre: 'Cartel Front', especificaciones: '2.90x1.60 mt (Valla) / 7.18x2.04 mt (Parking)' },
-        ],
-      },
-      {
-        id: 'cat-exhibicion',
-        nombre: 'Exhibición & Branding',
-        elementos: [
-          { id: 'off-islas', nombre: 'Islas / Revestimiento Pallets', especificaciones: 'Desarrollo a medida en salón de ventas' },
-          { id: 'off-botaderos', nombre: 'Botaderos', especificaciones: 'Exhibidor de alto tráfico a medida' },
-          { id: 'off-wow', nombre: 'Espacios WOW', especificaciones: 'Estructuras de gran impacto en tiendas especiales' },
-          { id: 'off-punteras', nombre: 'Punteras de Góndola', especificaciones: 'Carga de mercadería en pasillos principales' },
-          { id: 'off-columnas', nombre: 'Columnas', especificaciones: 'Tematización de columnas con carga de producto' },
-          { id: 'off-exhibidores', nombre: 'Exhibidores', especificaciones: 'Muebles de exhibición personalizados' },
-          { id: 'off-banners', nombre: 'Banners In Store', especificaciones: 'Lona con soporte metálico (90x190 cm)' },
-        ],
-      },
-      {
-        id: 'cat-activaciones',
-        nombre: 'Activaciones, Checkout & Audio',
-        elementos: [
-          { id: 'off-acciones-esp', nombre: 'Acciones Especiales (Parking/Tienda)', especificaciones: 'Sampling, juegos o unidades móviles' },
-          { id: 'off-eventos', nombre: 'Eventos Especiales / Degustaciones', especificaciones: 'Stand promocional con personal' },
-          { id: 'off-checkout', nombre: 'Separadores de Checkout', especificaciones: 'Branding en línea de cajas' },
-          { id: 'off-cupones', nombre: 'Cupones Promocionales', especificaciones: 'Segmentables por ticket, horario o tienda' },
-          { id: 'off-audio', nombre: 'Audio en Tienda', especificaciones: 'Spot de audio rotativo cada 30 minutos' },
-        ],
-      },
-    ],
-  },
-];
+import { Cliente, Tienda, CatalogoItem, Deal, Usuario, Adjunto } from '../../lib/types';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; 
+import { supabase } from "../../lib/supabase";
+import SearchableSelect from "../../components/SearchableSelect";
 
 export default function CotizadorPage() {
-  const [canalKey, setCanalKey] = useState<string>('');
-  const [categoriaId, setCategoriaId] = useState<string>('');
-  const [elementoId, setElementoId] = useState<string>('');
-  const [cantidad, setCantidad] = useState<number>(1);
-  const [precioUnitario, setPrecioUnitario] = useState<number>(0);
-  const [items, setItems] = useState<any[]>([]);
+  const router = useRouter();
 
-  // Búsqueda en objeto local
-  const canalSeleccionado = CATALOGO.find((c) => c.canal === canalKey);
-  const categoriasDisponibles = canalSeleccionado ? canalSeleccionado.categorias : [];
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [catalogo, setCatalogo] = useState<any[]>([]);
+  const [tiendas, setTiendas] = useState<any[]>([]);
 
-  const categoriaSeleccionada = categoriasDisponibles.find((cat) => cat.id === categoriaId);
-  const elementosDisponibles = categoriaSeleccionada ? categoriaSeleccionada.elementos : [];
+  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
 
-  const elementoSeleccionado = elementosDisponibles.find((el) => el.id === elementoId);
+  const [titulo, setTitulo] = useState("");
+  const [clienteSeleccionado, setClienteSeleccionado] = useState("");
+  const [esAgencia, setEsAgencia] = useState(false);
+  const [auspicianteSeleccionado, setAuspicianteSeleccionado] = useState("");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
 
-  const agregarItem = () => {
-    if (!canalSeleccionado || !categoriaSeleccionada || !elementoSeleccionado) return;
+  const [canal, setCanal] = useState("Digital");
+  const [elementoSeleccionado, setElementoSeleccionado] = useState("");
+  const [tiendasSeleccionadas, setTiendasSeleccionadas] = useState<number[]>([]);
+  const [busquedaTienda, setBusquedaTienda] = useState("");
+  const [esReclasificado, setEsReclasificado] = useState(false);
+
+  // ADJUNTOS ASOCIADOS AL ELEMENTO ACTUAL EN CONFIGURACIÓN
+  const [adjuntosItemActual, setAdjuntosItemActual] = useState<Adjunto[]>([]);
+  
+  const [elementosAcuerdo, setElementosAcuerdo] = useState<any[]>([]);
+  const [descuento, setDescuento] = useState(0);
+
+  const [subiendoArchivo, setSubiendoArchivo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    async function fetchData() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) {
+        const { data } = await supabase.from('usuarios').select('*').eq('email', session.user.email).single();
+        if (data) {
+          const user = data as Usuario;
+          if (user.rol === 'ADMINISTRATIVO') {
+            router.push('/crm');
+            return;
+          }
+          setCurrentUser(user);
+        }
+      }
+
+      const { data: dataClientes } = await supabase.from('clientes').select('*');
+      if (dataClientes) setClientes(dataClientes);
+
+      const { data: dataCatalogo } = await supabase.from('catalogo').select('*');
+      if (dataCatalogo) setCatalogo(dataCatalogo);
+
+      const { data: dataTiendas } = await supabase.from('tiendas').select('*').order('numero', { ascending: true });
+      if (dataTiendas) setTiendas(dataTiendas);
+    }
+    fetchData();
+  }, [router]);
+
+  const handleClienteChange = (id: string) => {
+    setClienteSeleccionado(id);
+    const cliente = clientes.find(c => c.id.toString() === id);
+    if (cliente) {
+      setEsAgencia(cliente.es_agencia);
+      if (!cliente.es_agencia) setAuspicianteSeleccionado(""); 
+    } else {
+      setEsAgencia(false);
+    }
+  };
+
+  const handleCanalChange = (nuevoCanal: string) => {
+    setCanal(nuevoCanal);
+    setElementoSeleccionado("");
+    setTiendasSeleccionadas([]);
+    setBusquedaTienda("");
+    setAdjuntosItemActual([]);
+  };
+
+  const handleTiendaToggle = (idTienda: number) => {
+    setTiendasSeleccionadas(prev => 
+      prev.includes(idTienda) 
+        ? prev.filter(id => id !== idTienda) 
+        : [...prev, idTienda]
+    );
+  };
+
+  const handleFileUploadItem = async (e: React.ChangeEvent<HTMLInputElement>, categoria: 'DISEÑO' | 'EAN' | 'RENDER') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSubiendoArchivo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage.from('adjuntos').upload(filePath, file);
+      
+      if (uploadError) {
+        throw new Error(uploadError.message || "Error al subir a Supabase");
+      }
+
+      const { data } = supabase.storage.from('adjuntos').getPublicUrl(filePath);
+
+      const nuevoAdjunto: Adjunto = {
+        id: filePath,
+        nombre: file.name,
+        url: data.publicUrl,
+        tipo: file.type,
+        tamaño: file.size,
+        categoria: categoria
+      };
+
+      setAdjuntosItemActual(prev => [...prev, nuevoAdjunto]);
+    } catch (error: any) {
+      console.error("Error subiendo archivo:", error);
+      alert(`Error subiendo archivo: ${error.message}`);
+    } finally {
+      setSubiendoArchivo(false);
+    }
+  };
+
+  const removeAdjuntoItemActual = (id: string) => {
+    setAdjuntosItemActual(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleAgregarElemento = () => {
+    if (!elementoSeleccionado) return;
+    if (canal === 'InStore' && tiendasSeleccionadas.length === 0) {
+      alert("Debes seleccionar al menos una tienda para campañas InStore.");
+      return;
+    }
+
+    const itemCatalogo = catalogo.find(c => c.id.toString() === elementoSeleccionado);
+    if (!itemCatalogo) return;
+
+    const multiplicador = canal === 'InStore' ? tiendasSeleccionadas.length : 1;
+    const subtotalItem = itemCatalogo.precio_base * multiplicador;
 
     const nuevoItem = {
-      id: crypto.randomUUID(),
-      canal: canalSeleccionado.canal,
-      categoria: categoriaSeleccionada.nombre,
-      elemento: elementoSeleccionado.nombre,
-      especificaciones: elementoSeleccionado.especificaciones,
-      cantidad,
-      precioUnitario,
-      subtotal: cantidad * precioUnitario,
+      idUnico: Date.now(),
+      catalogoId: itemCatalogo.id,
+      nombre: itemCatalogo.elemento,
+      canal: canal,
+      precioUnitario: itemCatalogo.precio_base,
+      tiendas: tiendasSeleccionadas,
+      subtotal: subtotalItem,
+      adjuntos: adjuntosItemActual // <--- ADJUNTOS VINCULADOS DIRECTAMENTE A ESTE ELEMENTO
     };
 
-    setItems([...items, nuevoItem]);
-    setElementoId('');
-    setCantidad(1);
-    setPrecioUnitario(0);
+    setElementosAcuerdo([...elementosAcuerdo, nuevoItem]);
+    
+    // Resetear formulario de elemento
+    setElementoSeleccionado("");
+    setTiendasSeleccionadas([]);
+    setBusquedaTienda("");
+    setAdjuntosItemActual([]);
   };
 
-  const eliminarItem = (id: string) => {
-    setItems(items.filter((i) => i.id !== id));
+  const eliminarElemento = (idUnico: number) => {
+    setElementosAcuerdo(elementosAcuerdo.filter(item => item.idUnico !== idUnico));
   };
 
-  const totalCotizacion = items.reduce((acc, curr) => acc + curr.subtotal, 0);
+  const tiendasFiltradas = tiendas.filter(t => {
+    const termino = busquedaTienda.toLowerCase();
+    return (
+      t.numero.includes(termino) ||
+      t.nombre.toLowerCase().includes(termino) ||
+      t.formato.toLowerCase().includes(termino)
+    );
+  });
+  
+  const subtotalGlobal = elementosAcuerdo.reduce((acc, item) => acc + item.subtotal, 0);
+  const montoDescuento = (subtotalGlobal * descuento) / 100;
+  const totalFinal = subtotalGlobal - montoDescuento;
+
+  const handleGuardarCotizacion = async () => {
+    if (!titulo.trim()) { alert("Por favor ingresa un Título para el acuerdo."); return; }
+    if (!clienteSeleccionado || elementosAcuerdo.length === 0) { alert("Selecciona un cliente y agrega al menos un elemento."); return; }
+    if (!fechaDesde || !fechaHasta) { alert("Selecciona las fechas de vigencia (Desde / Hasta)."); return; }
+    if (new Date(fechaHasta) < new Date(fechaDesde)) { alert("La Fecha Hasta no puede ser menor a la Fecha Desde."); return; }
+
+    setGuardando(true);
+
+    try {
+      const tieneDigital = elementosAcuerdo.some(i => i.canal === 'Digital');
+      const tieneInStore = elementosAcuerdo.some(i => i.canal === 'InStore');
+      const canalPrincipal = (tieneDigital && tieneInStore) ? 'Omnicanal' : (tieneDigital ? 'Digital' : 'InStore');
+      const catalogoIdPrincipal = elementosAcuerdo[0].catalogoId;
+
+      // CONSOLIDAR ADJUNTOS ETIQUETADOS POR ELEMENTO
+      const todosLosAdjuntos = elementosAcuerdo.flatMap(item => 
+        (item.adjuntos || []).map((adj: Adjunto) => ({
+          ...adj,
+          catalogo_id: item.catalogoId,
+          elemento_nombre: item.nombre
+        }))
+      );
+
+      const { data: dealCreated, error: dealError } = await supabase.from('deals').insert([
+        {
+          titulo: titulo,
+          amount: totalFinal,
+          channel: canalPrincipal,
+          stage: 'COTIZADO',
+          cliente_id: Number(clienteSeleccionado),
+          auspiciante_id: auspicianteSeleccionado ? Number(auspicianteSeleccionado) : null,
+          catalogo_id: Number(catalogoIdPrincipal),
+          descuento_porcentaje: descuento,
+          fecha_desde: fechaDesde,
+          fecha_hasta: fechaHasta,
+          es_reclasificado: esReclasificado,
+          adjuntos: todosLosAdjuntos,
+          vendedor_id: currentUser?.id || null 
+        }
+      ]).select().single();
+
+      if (dealError) throw dealError;
+
+      const tiendasUnicas = new Set<number>();
+      elementosAcuerdo.forEach(item => {
+        if (item.tiendas) item.tiendas.forEach((tId: number) => tiendasUnicas.add(tId));
+      });
+
+      if (dealCreated && tiendasUnicas.size > 0) {
+        const registrosTiendas = Array.from(tiendasUnicas).map(tId => ({ deal_id: dealCreated.id, tienda_id: tId }));
+        const { error: tiendasError } = await supabase.from('deal_tiendas').insert(registrosTiendas);
+        if (tiendasError) throw tiendasError;
+      }
+
+      router.push('/crm');
+
+    } catch (error) {
+      console.error("Error al guardar cotización:", error);
+      alert("Hubo un error al guardar la cotización.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const opcionesClientes = clientes.map(c => ({ id: c.id, label: c.nombre }));
+  const opcionesAnunciantes = clientes.filter(c => !c.es_agencia).map(c => ({ id: c.id, label: c.nombre }));
+  const opcionesCatalogo = catalogo.filter(c => c.canal === canal).map(c => ({ id: c.id, label: `${c.elemento} ($${c.precio_base.toLocaleString()})` }));
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: '1000px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '1.8rem', marginBottom: '1.5rem', fontWeight: 'bold' }}>Cotizador Retail Media</h1>
-
-      <div style={{ border: '1px solid #e2e8f0', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem', backgroundColor: '#f8fafc' }}>
-        <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '1rem' }}>1. Seleccionar Espacio</h2>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-          {/* PASO 1: CANAL */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>1. Canal</label>
-            <select
-              value={canalKey}
-              onChange={(e) => {
-                setCanalKey(e.target.value);
-                setCategoriaId('');
-                setElementoId('');
-              }}
-              style={{ width: '100%', padding: '0.6rem', borderRadius: '4px', border: '1px solid #cbd5e1', backgroundColor: '#fff', fontSize: '0.9rem' }}
-            >
-              <option value="">-- Seleccionar Canal --</option>
-              {CATALOGO.map((c) => (
-                <option key={c.canal} value={c.canal}>{c.nombreCanal}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* PASO 2: CATEGORÍA */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>2. Categoría</label>
-            <select
-              value={categoriaId}
-              onChange={(e) => {
-                setCategoriaId(e.target.value);
-                setElementoId('');
-              }}
-              disabled={!canalKey}
-              style={{ 
-                width: '100%', 
-                padding: '0.6rem', 
-                borderRadius: '4px', 
-                border: '1px solid #cbd5e1', 
-                backgroundColor: !canalKey ? '#f1f5f9' : '#fff',
-                fontSize: '0.9rem'
-              }}
-            >
-              <option value="">-- Seleccionar Categoría --</option>
-              {categoriasDisponibles.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* PASO 3: ELEMENTO */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>3. Elemento</label>
-            <select
-              value={elementoId}
-              onChange={(e) => setElementoId(e.target.value)}
-              disabled={!categoriaId}
-              style={{ 
-                width: '100%', 
-                padding: '0.6rem', 
-                borderRadius: '4px', 
-                border: '1px solid #cbd5e1', 
-                backgroundColor: !categoriaId ? '#f1f5f9' : '#fff',
-                fontSize: '0.9rem'
-              }}
-            >
-              <option value="">-- Seleccionar Elemento --</option>
-              {elementosDisponibles.map((el) => (
-                <option key={el.id} value={el.id}>{el.nombre}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {elementoSeleccionado && (
-          <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#ffffff', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-            <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#334155' }}>
-              <strong>Especificaciones:</strong> {elementoSeleccionado.especificaciones}
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600' }}>Cantidad</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={cantidad}
-                  onChange={(e) => setCantidad(Math.max(1, Number(e.target.value)))}
-                  style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600' }}>Precio Unitario ($)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={precioUnitario}
-                  onChange={(e) => setPrecioUnitario(Number(e.target.value))}
-                  style={{ width: '130px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                />
-              </div>
-              <button
-                onClick={agregarItem}
-                style={{ backgroundColor: '#2563eb', color: '#fff', padding: '0.5rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: '600' }}
-              >
-                + Agregar ítem
-              </button>
-            </div>
-          </div>
-        )}
+    <div className="flex flex-col gap-8 h-full p-8 overflow-y-auto">
+      <div>
+        <h2 className="text-3xl font-bold text-white mb-2">Cotizador de Campañas</h2>
+        <p className="text-slate-400 text-sm">Arma tu acuerdo agregando elementos y sus renders correspondientes.</p>
       </div>
 
-      {/* RESUMEN DE LA PROPUESTA */}
-      <div>
-        <h2 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '1rem' }}>2. Resumen de la Propuesta</h2>
-        {items.length === 0 ? (
-          <p style={{ color: '#64748b', fontStyle: 'italic' }}>No hay ítems agregados a la propuesta.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
-                <th style={{ padding: '0.75rem' }}>Canal</th>
-                <th style={{ padding: '0.75rem' }}>Espacio</th>
-                <th style={{ padding: '0.75rem' }}>Especificaciones</th>
-                <th style={{ padding: '0.75rem' }}>Cant.</th>
-                <th style={{ padding: '0.75rem' }}>Precio U.</th>
-                <th style={{ padding: '0.75rem' }}>Subtotal</th>
-                <th style={{ padding: '0.75rem' }}>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '0.75rem', fontWeight: '600' }}>{item.canal}</td>
-                  <td style={{ padding: '0.75rem' }}>
-                    <div><strong>{item.elemento}</strong></div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{item.categoria}</div>
-                  </td>
-                  <td style={{ padding: '0.75rem', color: '#475569' }}>{item.especificaciones}</td>
-                  <td style={{ padding: '0.75rem' }}>{item.cantidad}</td>
-                  <td style={{ padding: '0.75rem' }}>${item.precioUnitario.toLocaleString()}</td>
-                  <td style={{ padding: '0.75rem', fontWeight: '600' }}>${item.subtotal.toLocaleString()}</td>
-                  <td style={{ padding: '0.75rem' }}>
-                    <button
-                      onClick={() => eliminarItem(item.id)}
-                      style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer' }}
-                    >
-                      Quitar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '2px solid #cbd5e1', backgroundColor: '#f8fafc' }}>
-                <td colSpan={5} style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 'bold', fontSize: '1rem' }}>Monto Total Neto:</td>
-                <td colSpan={2} style={{ padding: '0.75rem', fontWeight: 'bold', fontSize: '1rem', color: '#16a34a' }}>
-                  ${totalCotizacion.toLocaleString()}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
+      <div className="flex flex-col lg:flex-row gap-6 max-w-7xl items-start">
+        
+        {/* COLUMNA IZQ: CONFIGURADOR */}
+        <div className="flex flex-col gap-6 flex-1 w-full">
+          
+          <div className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md">
+            <h3 className="text-cyan-400 font-semibold mb-4 border-b border-white/10 pb-2">1. Datos del Acuerdo</h3>
+            
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-slate-400 block mb-2">Título del Acuerdo *</label>
+              <input 
+                type="text" 
+                placeholder="Ej: Campaña Verano 2024"
+                value={titulo} 
+                onChange={(e) => setTitulo(e.target.value)} 
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">Cliente / Agencia *</label>
+                <SearchableSelect 
+                  options={opcionesClientes}
+                  value={clienteSeleccionado}
+                  onChange={handleClienteChange}
+                  placeholder="Escribe para buscar..."
+                />
+              </div>
+
+              {esAgencia && (
+                <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                  <label className="text-xs font-semibold text-cyan-400 block mb-2">Anunciante Final</label>
+                  <SearchableSelect 
+                    options={opcionesAnunciantes}
+                    value={auspicianteSeleccionado}
+                    onChange={setAuspicianteSeleccionado}
+                    placeholder="Escribe para buscar..."
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">Vigencia Desde *</label>
+                <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">Vigencia Hasta *</label>
+                <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md space-y-4">
+            <h3 className="text-cyan-400 font-semibold border-b border-white/10 pb-2">2. Configurar Elemento</h3>
+            
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" checked={canal === 'Digital'} onChange={() => handleCanalChange('Digital')} className="text-cyan-500 bg-slate-900 border-slate-700 w-4 h-4" />
+                <span className="text-sm text-white">Digital</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" checked={canal === 'InStore'} onChange={() => handleCanalChange('InStore')} className="text-amber-500 bg-slate-900 border-slate-700 w-4 h-4" />
+                <span className="text-sm text-white">InStore (Físico)</span>
+              </label>
+            </div>
+
+            {canal === 'InStore' && (
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-300 hover:text-white cursor-pointer w-fit p-2 bg-slate-800/50 rounded-lg border border-slate-700/50 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={esReclasificado} 
+                    onChange={(e) => setEsReclasificado(e.target.checked)} 
+                    className="rounded border-slate-600 bg-slate-900 text-amber-500 focus:ring-amber-500" 
+                  />
+                  <span>⚠️ Espacio Reclasificado</span>
+                </label>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs font-semibold text-slate-400 block mb-2">Elemento ({canal}) *</label>
+              <SearchableSelect 
+                options={opcionesCatalogo}
+                value={elementoSeleccionado}
+                onChange={setElementoSeleccionado}
+                placeholder="Escribe el nombre del espacio..."
+              />
+            </div>
+
+            {canal === 'InStore' && elementoSeleccionado && (
+              <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                <label className="text-xs font-semibold text-slate-300 block mb-2">
+                  Selecciona las tiendas a aplicar ({tiendasSeleccionadas.length} seleccionadas):
+                </label>
+
+                <div className="relative mb-3">
+                  <input 
+                    type="text"
+                    value={busquedaTienda}
+                    onChange={(e) => setBusquedaTienda(e.target.value)}
+                    placeholder="Buscar tienda por nro (0101), nombre o formato..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:outline-none focus:border-amber-400"
+                  />
+                  <span className="material-symbols-outlined text-slate-500 absolute left-2.5 top-2.5 text-sm">
+                    search
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2">
+                  {tiendasFiltradas.length === 0 ? (
+                    <p className="text-slate-500 text-xs text-center py-2">No se encontraron tiendas.</p>
+                  ) : (
+                    tiendasFiltradas.map(tienda => (
+                      <label key={tienda.id} className="flex items-center justify-between p-2 rounded bg-slate-900/60 hover:bg-slate-800 border border-slate-700/50 cursor-pointer text-sm text-slate-300 hover:text-white transition-colors">
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="checkbox" 
+                            checked={tiendasSeleccionadas.includes(tienda.id)}
+                            onChange={() => handleTiendaToggle(tienda.id)}
+                            className="rounded border-slate-600 bg-slate-900 text-amber-500 focus:ring-amber-500"
+                          />
+                          <span className="font-mono text-amber-400 text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{tienda.numero}</span>
+                          <span>{tienda.formato} {tienda.nombre}</span>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SECCIÓN DE SUBIDA DE ARCHIVOS VINCULADA AL ELEMENTO ACTUAL */}
+            {elementoSeleccionado && (
+              <div className="p-4 bg-slate-950/80 border border-cyan-500/30 rounded-lg space-y-3">
+                <label className="text-xs font-bold text-cyan-400 uppercase block">
+                  Adjuntos para este Elemento ({canal === 'Digital' ? 'Diseños / EANs' : 'Renders / Fotos'})
+                </label>
+
+                {canal === 'Digital' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="border border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-3 text-center relative hover:border-cyan-500/50">
+                      <span className="material-symbols-outlined text-xl text-slate-400">imagesmode</span>
+                      <p className="text-xs text-slate-300 font-bold">Subir Diseño</p>
+                      <input type="file" onChange={(e) => handleFileUploadItem(e, 'DISEÑO')} disabled={subiendoArchivo} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                    <div className="border border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-3 text-center relative hover:border-cyan-500/50">
+                      <span className="material-symbols-outlined text-xl text-slate-400">list_alt</span>
+                      <p className="text-xs text-slate-300 font-bold">Subir EANs (CSV)</p>
+                      <input type="file" onChange={(e) => handleFileUploadItem(e, 'EAN')} disabled={subiendoArchivo} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-4 text-center relative hover:border-amber-500/50">
+                    <span className="material-symbols-outlined text-2xl text-amber-400">view_in_ar</span>
+                    <p className="text-xs text-slate-300 font-bold">Subir Render / Foto del Espacio InStore</p>
+                    <input type="file" onChange={(e) => handleFileUploadItem(e, 'RENDER')} disabled={subiendoArchivo} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </div>
+                )}
+
+                {subiendoArchivo && <p className="text-xs text-cyan-400 animate-pulse text-center">Subiendo archivo...</p>}
+
+                {adjuntosItemActual.length > 0 && (
+                  <div className="space-y-1.5 pt-2">
+                    {adjuntosItemActual.map(adj => (
+                      <div key={adj.id} className="flex items-center justify-between bg-slate-900 border border-slate-800 p-2 rounded text-xs">
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="material-symbols-outlined text-slate-400 text-sm">attach_file</span>
+                          <span className="text-cyan-300 truncate">{adj.nombre}</span>
+                        </div>
+                        <button type="button" onClick={() => removeAdjuntoItemActual(adj.id)} className="text-slate-500 hover:text-rose-400">
+                          <span className="material-symbols-outlined text-xs">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button 
+              type="button"
+              onClick={handleAgregarElemento}
+              disabled={!elementoSeleccionado}
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold rounded-lg py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              + Agregar Elemento al Acuerdo ({adjuntosItemActual.length} adjuntos)
+            </button>
+          </div>
+
+        </div>
+
+        {/* COLUMNA DER: RESUMEN / CARRITO */}
+        <div className="w-full lg:w-[400px] bg-slate-900/80 border border-white/10 rounded-xl p-6 sticky top-24 shadow-2xl border-t-cyan-500/30">
+          <div className="flex items-center gap-2 mb-6 border-b border-white/10 pb-4">
+            <span className="material-symbols-outlined text-cyan-400">receipt_long</span>
+            <h3 className="font-semibold text-lg text-white">Resumen del Acuerdo</h3>
+          </div>
+
+          <div className="space-y-3 mb-6 min-h-[150px] max-h-[300px] overflow-y-auto pr-2">
+            {elementosAcuerdo.length === 0 ? (
+              <p className="text-slate-500 text-sm text-center italic mt-10">No hay elementos agregados.</p>
+            ) : (
+              elementosAcuerdo.map((item) => (
+                <div key={item.idUnico} className="bg-slate-800/80 p-3 rounded border border-slate-700 relative group">
+                  <div className="flex justify-between items-start mb-1 pr-6">
+                    <span className="font-medium text-white text-sm">{item.nombre}</span>
+                    <span className="text-cyan-400 font-semibold text-sm">${item.subtotal.toLocaleString()}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-2">
+                    {item.canal} • {item.canal === 'InStore' ? `${item.tiendas.length} Tiendas` : 'Campaña única'}
+                  </p>
+
+                  {/* VISUALIZACIÓN DE ARCHIVOS ADJUNTOS DEL ITEM */}
+                  {item.adjuntos && item.adjuntos.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-t border-slate-700/50 pt-2 mt-1">
+                      {item.adjuntos.map((adj: Adjunto, idx: number) => (
+                        <a 
+                          key={idx} 
+                          href={adj.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="bg-slate-900 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 hover:border-cyan-400"
+                        >
+                          <span className="material-symbols-outlined text-[10px]">attachment</span>
+                          {adj.categoria || 'Adjunto'} {idx + 1}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  <button 
+                    type="button"
+                    onClick={() => eliminarElemento(item.idUnico)}
+                    className="absolute top-2 right-2 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="w-full h-px bg-white/10 mb-4"></div>
+
+          <div className="space-y-4 mb-8">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-400">Subtotal</span>
+              <span className="text-white font-medium">${subtotalGlobal.toLocaleString()}</span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-400">Descuento del Acuerdo (%)</span>
+              <input 
+                type="number" min="0" max="100" value={descuento} onChange={(e) => setDescuento(Number(e.target.value))}
+                className="w-20 bg-slate-800 border border-slate-700 rounded p-1 text-white text-right focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            {descuento > 0 && (
+              <div className="flex justify-between items-center text-red-400">
+                <span className="text-sm">Ahorro</span>
+                <span className="font-medium">- ${montoDescuento.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between items-end mb-6 bg-slate-950 p-4 rounded-lg border border-cyan-500/20">
+            <span className="text-white font-semibold text-sm">Total Final</span>
+            <span className="text-2xl font-bold text-cyan-400 tracking-tight">
+              ${totalFinal.toLocaleString()}
+            </span>
+          </div>
+
+          <button 
+            type="button"
+            onClick={handleGuardarCotizacion}
+            disabled={elementosAcuerdo.length === 0 || !clienteSeleccionado || guardando}
+            className="w-full bg-cyan-500 text-slate-900 hover:bg-cyan-400 font-bold rounded-lg py-3 transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(34,211,238,0.3)] disabled:opacity-50 disabled:shadow-none cursor-pointer"
+          >
+            <span className="material-symbols-outlined">save</span>
+            {guardando ? "Guardando..." : "Guardar Cotización"}
+          </button>
+        </div>
+
       </div>
     </div>
   );
