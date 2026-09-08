@@ -226,104 +226,104 @@ export default function FacturacionPage() {
     setItemsCierre(prev => prev.map(item => ({ ...item, seleccionado: marcar })));
   };
 
-  // --- FUNCIÓN PARA GENERAR EL EXCEL IDÉNTICO AL TEMPLATE ---
-    const generarExcel = (seleccionados: ItemCierreMes[]) => {
-      const [year, month] = mesCierreSeleccionado.split('-');
-      const shortYear = year.slice(-2);
-      
-      // Obtenemos el nombre formateado (Ej: "Agosto 2026")
-      const nombreMesYAnio = obtenerNombreMesFormateado(mesCierreSeleccionado);
-      
-      const asignacionCounter: Record<string, number> = {};
-
-      // Construimos la matriz celda por celda (aoa = Array of Arrays)
-      const excelData = [
-        // Fila 1: Título en la columna B (índice 1)
-        ['', `FACTURAS ${nombreMesYAnio} (v.1)`], 
+    // --- FUNCIÓN PARA GENERAR EL EXCEL IDÉNTICO AL TEMPLATE ---
+      const generarExcel = (seleccionados: ItemCierreMes[]) => {
+        const [year, month] = mesCierreSeleccionado.split('-');
+        const shortYear = year.slice(-2);
         
-        // Fila 2: Totalmente en blanco
-        [], 
+        // Obtenemos el nombre formateado (Ej: "Agosto 2026")
+        const nombreMesYAnio = obtenerNombreMesFormateado(mesCierreSeleccionado);
         
-        // Fila 3: Cabeceras respetando las columnas exactas del original
-        [
-          '', // Col A vacía
-          'Cliente', 
-          'Nro de Proveedor', 
-          'Leyenda', 
-          'Importe', 
-          'Asignacion', 
-          'Material', 
-          'centro de costo', 
-          '', // Col I vacía 
-          'FECHA DE FACTURACIÓN', 
-          'FACTURA', 
-          'OREDEN DE COMPRA', 
-          'OC', 
-          'FACTURACION TOTAL', 
-          'IIBB'
-        ]
-      ];
+        const asignacionCounter: Record<string, number> = {};
 
-      // Fila 4 en adelante: Agregamos los datos
-      seleccionados.forEach(item => {
-        if (!asignacionCounter[item.clienteNombre]) {
-          asignacionCounter[item.clienteNombre] = 1;
-        } else {
-          asignacionCounter[item.clienteNombre]++;
-        }
-        const asignacion = asignacionCounter[item.clienteNombre];
+        // AÑADIMOS EL TIPO : any[][] AQUÍ PARA EVITAR EL ERROR DE TYPESCRIPT
+        const excelData: any[][] = [
+          // Fila 1: Título en la columna B (índice 1)
+          ['', `FACTURAS ${nombreMesYAnio} (v.1)`], 
+          
+          // Fila 2: Totalmente en blanco
+          [], 
+          
+          // Fila 3: Cabeceras respetando las columnas exactas del original
+          [
+            '', // Col A vacía
+            'Cliente', 
+            'Nro de Proveedor', 
+            'Leyenda', 
+            'Importe', 
+            'Asignacion', 
+            'Material', 
+            'centro de costo', 
+            '', // Col I vacía 
+            'FECHA DE FACTURACIÓN', 
+            'FACTURA', 
+            'OREDEN DE COMPRA', 
+            'OC', 
+            'FACTURACION TOTAL', 
+            'IIBB'
+          ]
+        ];
+
+        // Fila 4 en adelante: Agregamos los datos
+        seleccionados.forEach(item => {
+          if (!asignacionCounter[item.clienteNombre]) {
+            asignacionCounter[item.clienteNombre] = 1;
+          } else {
+            asignacionCounter[item.clienteNombre]++;
+          }
+          const asignacion = asignacionCounter[item.clienteNombre];
+          
+          const leyenda = `RM-${item.canal}-${month}-${shortYear}`;
+          
+          const esDigital = item.canal === 'Digital' || item.canal === 'Omnicanal';
+          const material = esDigital ? 703 : '';
+          const cdc = esDigital ? 9940 : '';
+
+          excelData.push([
+            '', // Col A vacía
+            item.clienteNombre,
+            '', // Nro Proveedor (queda vacío por ahora)
+            leyenda,
+            item.montoAFacturarEditado,
+            asignacion,
+            material,
+            cdc,
+            '', // Col I vacía
+            '', // Fecha
+            '', // Factura
+            '', // Orden de compra
+            '', // OC
+            '', // Facturacion Total
+            ''  // IIBB
+          ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(excelData);
         
-        const leyenda = `RM-${item.canal}-${month}-${shortYear}`;
-        
-        const esDigital = item.canal === 'Digital' || item.canal === 'Omnicanal';
-        const material = esDigital ? 703 : '';
-        const cdc = esDigital ? 9940 : '';
+        // Ajustamos el ancho de las columnas para que quede prolijo al abrirlo
+        ws['!cols'] = [
+          { wch: 3 },  // A: Margen
+          { wch: 35 }, // B: Cliente
+          { wch: 18 }, // C: Nro Prov
+          { wch: 30 }, // D: Leyenda
+          { wch: 15 }, // E: Importe
+          { wch: 12 }, // F: Asignación
+          { wch: 10 }, // G: Material
+          { wch: 18 }, // H: Centro Costo
+          { wch: 5 },  // I: Margen
+          { wch: 22 }, // J: Fecha Fact.
+          { wch: 15 }, // K: Factura
+          { wch: 22 }, // L: Orden de Compra
+          { wch: 10 }, // M: OC
+          { wch: 22 }, // N: Facturacion total
+          { wch: 10 }, // O: IIBB
+        ];
 
-        excelData.push([
-          '', // Col A vacía
-          item.clienteNombre,
-          '', // Nro Proveedor (queda vacío por ahora)
-          leyenda,
-          item.montoAFacturarEditado,
-          asignacion,
-          material,
-          cdc,
-          '', // Col I vacía
-          '', // Fecha
-          '', // Factura
-          '', // Orden de compra
-          '', // OC
-          '', // Facturacion Total
-          ''  // IIBB
-        ]);
-      });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `Cierre_${month}_${shortYear}`);
 
-      const ws = XLSX.utils.aoa_to_sheet(excelData);
-      
-      // Ajustamos el ancho de las columnas para que quede prolijo al abrirlo
-      ws['!cols'] = [
-        { wch: 3 },  // A: Margen
-        { wch: 35 }, // B: Cliente
-        { wch: 18 }, // C: Nro Prov
-        { wch: 30 }, // D: Leyenda
-        { wch: 15 }, // E: Importe
-        { wch: 12 }, // F: Asignación
-        { wch: 10 }, // G: Material
-        { wch: 18 }, // H: Centro Costo
-        { wch: 5 },  // I: Margen
-        { wch: 22 }, // J: Fecha Fact.
-        { wch: 15 }, // K: Factura
-        { wch: 22 }, // L: Orden de Compra
-        { wch: 10 }, // M: OC
-        { wch: 22 }, // N: Facturacion total
-        { wch: 10 }, // O: IIBB
-      ];
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, `Cierre_${month}_${shortYear}`);
-
-      XLSX.writeFile(wb, `Lote_Facturacion_${month}_${year}.xlsx`);
-    };
+        XLSX.writeFile(wb, `Lote_Facturacion_${month}_${year}.xlsx`);
+      };
 
   const handleConfirmarCierreMes = async () => {
     const seleccionados = itemsCierre.filter(i => i.seleccionado && i.montoAFacturarEditado > 0);
