@@ -56,14 +56,14 @@ export async function DELETE(request: Request) {
     const { error: dbError } = await supabaseAdmin.from('usuarios').delete().eq('id', id);
     if (dbError) throw dbError;
 
-    // 2. Buscamos su credencial de seguridad y la destruimos
-    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-    if (users) {
-      const authUser = users.find(u => u.email === email);
-      if (authUser) {
-        await supabaseAdmin.auth.admin.deleteUser(authUser.id);
-      }
+  // Busca las líneas 60-65 en app/api/usuarios/route.ts y reemplázalas por esto:
+  const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+  if (users) {
+    const authUser = (users as any[]).find((u: any) => u.email === email);
+    if (authUser) {
+      await supabaseAdmin.auth.admin.deleteUser(authUser.id);
     }
+  }
 
     return NextResponse.json({ success: true, message: "Usuario eliminado completamente" });
   } catch (error: any) {
