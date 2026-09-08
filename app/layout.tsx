@@ -55,6 +55,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   if (loading) {
     return (
       <html lang="es" className="dark">
+        <head>
+          <title>Carrefour Media - Management Platform</title>
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
+        </head>
         <body className="bg-[#0e1416] min-h-screen flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
@@ -70,7 +74,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <title>Carrefour Media - Management Platform</title>
         <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&display=swap" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" />
+        <style>{`
+          .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-smoothing: antialiased;
+          }
+        `}</style>
       </head>
       
       <body className="bg-[#0e1416] text-slate-100 min-h-screen flex overflow-hidden" style={{ fontFamily: "'Geist', sans-serif" }}>
