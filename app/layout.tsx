@@ -55,6 +55,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   if (loading) {
     return (
       <html lang="es" className="dark">
+        <head>
+          <title>Carrefour Media - Management Platform</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&display=swap" rel="stylesheet" />
+          <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
+        </head>
         <body className="bg-[#0e1416] min-h-screen flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
@@ -67,7 +74,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="es" className="dark">
-      <body className="bg-[#0e1416] text-slate-100 min-h-screen flex overflow-hidden">
+      <head>
+        <title>Carrefour Media - Management Platform</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
+      </head>
+      
+      <body className="bg-[#0e1416] text-slate-100 min-h-screen flex overflow-hidden" style={{ fontFamily: "'Geist', sans-serif" }}>
+        
         <div className="fixed inset-0 z-[-1] bg-gradient-to-br from-[#0e1416] via-[#1a0b2e] to-[#0a192f] opacity-80"></div>
 
         {isLoginPage ? (
