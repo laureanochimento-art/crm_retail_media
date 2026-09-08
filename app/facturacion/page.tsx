@@ -4,11 +4,13 @@ import { Deal } from '../../lib/types';
 import React, { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { calcularProrrateoPorDias } from "../../lib/prorrateo";
+import * as XLSX from 'xlsx';
 
 interface ItemCierreMes {
   dealId: number;
   clienteNombre: string;
   dealTitulo: string;
+  canal: string;
   montoTotalAcuerdo: number;
   montoFacturadoActual: number;
   montoPendienteGlobal: number;
@@ -141,7 +143,6 @@ export default function FacturacionPage() {
     return nombre.charAt(0).toUpperCase() + nombre.slice(1);
   };
 
-  // REGLA DE VENCIMIENTO DUPLA: CAMPAÑA GENERAL O MES HISTÓRICO SIN LIQUIDAR
   const hoyStr = new Date().toISOString().split('T')[0];
   const mesActualKey = hoyStr.substring(0, 7);
 
@@ -156,12 +157,8 @@ export default function FacturacionPage() {
       const montoProrrateadoMes = itemMes ? itemMes.montoTotal : 0;
       const montoFacturadoMes = itemMes ? itemMes.montoFacturado : 0;
       
-      // Vencimiento 1: Contrato finalizado en el tiempo con saldo global
       const esVencidoGlobal = !!(deal.fecha_hasta && deal.fecha_hasta < hoyStr && mPendiente > 0);
-
-      // Vencimiento 2: Mes seleccionado histórico que quedó impago o parcialmente pagado
       const esMesVencido = mesCierreSeleccionado < mesActualKey && montoProrrateadoMes > 0 && (montoFacturadoMes < montoProrrateadoMes);
-
       const esVencido = esVencidoGlobal || esMesVencido;
 
       return {
@@ -192,6 +189,7 @@ export default function FacturacionPage() {
           dealId: deal.id,
           clienteNombre: deal.cliente?.nombre || 'Sin Cliente',
           dealTitulo: deal.titulo,
+          canal: deal.channel || 'Digital',
           montoTotalAcuerdo: deal.amount,
           montoFacturadoActual: deal.mFacturado,
           montoPendienteGlobal: deal.mPendiente,
@@ -228,6 +226,76 @@ export default function FacturacionPage() {
     setItemsCierre(prev => prev.map(item => ({ ...item, seleccionado: marcar })));
   };
 
+  // --- FUNCIÓN PARA GENERAR EL EXCEL IDÉNTICO AL TEMPLATE ---
+  const generarExcel = (seleccionados: ItemCierreMes[]) => {
+    const [year, month] = mesCierreSeleccionado.split('-');
+    const shortYear = year.slice(-2);
+    
+    const asignacionCounter: Record<string, number> = {};
+
+    const excelData = seleccionados.map(item => {
+      // 1. Contador de asignación por cliente
+      if (!asignacionCounter[item.clienteNombre]) {
+        asignacionCounter[item.clienteNombre] = 1;
+      } else {
+        asignacionCounter[item.clienteNombre]++;
+      }
+      const asignacion = asignacionCounter[item.clienteNombre];
+
+      // 2. Leyenda (Ej: RM-Digital-08-26)
+      const leyenda = `RM-${item.canal}-${month}-${shortYear}`;
+
+      // 3. Material y Centro de Costo
+      const esDigital = item.canal === 'Digital' || item.canal === 'Omnicanal';
+      const material = esDigital ? 703 : '';
+      const cdc = esDigital ? 9940 : '';
+
+      return {
+        '': '', // Columna A vacía
+        'Cliente': item.clienteNombre,
+        'Nro de Proveedor': '', 
+        'Leyenda': leyenda,
+        'Importe': item.montoAFacturarEditado,
+        'Asignacion': asignacion,
+        'Material': material,
+        'centro de costo': cdc,
+        ' ': '', // Columna I vacía (espacio para que no colisione la key)
+        'FECHA DE FACTURACIÓN': '',
+        'FACTURA': '',
+        'OREDEN DE COMPRA': '',
+        'OC': '',
+        'FACTURACION TOTAL': '',
+        'IIBB': ''
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    // Ajustar el ancho de las columnas para que quede prolijo
+    ws['!cols'] = [
+      { wch: 5 },  // Vacía
+      { wch: 30 }, // Cliente
+      { wch: 15 }, // Nro Prov
+      { wch: 25 }, // Leyenda
+      { wch: 15 }, // Importe
+      { wch: 10 }, // Asignación
+      { wch: 10 }, // Material
+      { wch: 15 }, // Centro Costo
+      { wch: 5 },  // Vacía
+      { wch: 20 }, // Fecha Fact.
+      { wch: 15 }, // Factura
+      { wch: 20 }, // Orden de Compra
+      { wch: 10 }, // OC
+      { wch: 20 }, // Facturacion total
+      { wch: 10 }, // IIBB
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Cierre_${month}_${shortYear}`);
+
+    XLSX.writeFile(wb, `Lote_Facturacion_${month}_${year}.xlsx`);
+  };
+
   const handleConfirmarCierreMes = async () => {
     const seleccionados = itemsCierre.filter(i => i.seleccionado && i.montoAFacturarEditado > 0);
 
@@ -238,6 +306,7 @@ export default function FacturacionPage() {
 
     setGuardandoCierre(true);
     try {
+      // 1. Actualizar la base de datos
       for (const item of seleccionados) {
         const nuevoMontoFacturado = item.montoFacturadoActual + item.montoAFacturarEditado;
         let nuevaEtapa = 'POR_FACTURAR';
@@ -257,7 +326,10 @@ export default function FacturacionPage() {
         if (error) throw error;
       }
 
-      alert(`¡Cierre de mes procesado exitosamente! Se actualizaron ${seleccionados.length} acuerdos.`);
+      // 2. Generar y descargar el Excel automáticamente
+      generarExcel(seleccionados);
+
+      alert(`¡Cierre de mes procesado exitosamente! Se actualizaron ${seleccionados.length} acuerdos y se descargó el Excel.`);
       setIsModalCierreOpen(false);
       fetchDeals();
     } catch (error: any) {
@@ -285,7 +357,6 @@ export default function FacturacionPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6 animate-fade-in">
-          {/* CARDS KPIS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-slate-900/60 border border-white/10 p-6 rounded-2xl backdrop-blur-md">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Monto Total Contratado</p>
@@ -303,7 +374,6 @@ export default function FacturacionPage() {
             </div>
           </div>
 
-          {/* HERRAMIENTA DE CIERRE */}
           <section className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-slate-700 pb-4">
               <div className="flex items-center gap-3">
@@ -437,7 +507,6 @@ export default function FacturacionPage() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMACIÓN */}
       {isModalCierreOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalCierreOpen(false)}></div>
@@ -568,7 +637,7 @@ export default function FacturacionPage() {
                   className="flex-1 md:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold px-6 py-2.5 rounded-lg text-sm transition-all shadow-[0_0_15px_rgba(52,211,153,0.3)] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-sm">check_circle</span>
-                  {guardandoCierre ? "Procesando Lote..." : "Confirmar y Facturar Lote"}
+                  {guardandoCierre ? "Procesando Lote..." : "Confirmar y Descargar Excel"}
                 </button>
               </div>
             </div>
