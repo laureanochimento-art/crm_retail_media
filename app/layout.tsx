@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "material-symbols/outlined.css"; // <-- Import de los iconos instalados localmente
 import "./globals.css";
 import ClientLayoutProvider from "./ClientLayoutProvider";
 
