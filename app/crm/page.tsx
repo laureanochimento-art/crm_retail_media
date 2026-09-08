@@ -13,6 +13,7 @@ export default function CRMPage() {
   const [clientes, setClientes] = useState<any[]>([]);
   const [catalogo, setCatalogo] = useState<any[]>([]);
   const [tiendas, setTiendas] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
 
@@ -28,6 +29,7 @@ export default function CRMPage() {
   const [editingDealId, setEditingDealId] = useState<number | null>(null);
 
   const [titulo, setTitulo] = useState("");
+  const [vendedorSeleccionado, setVendedorSeleccionado] = useState("");
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [esAgencia, setEsAgencia] = useState(false);
   const [auspicianteSeleccionado, setAuspicianteSeleccionado] = useState("");
@@ -85,6 +87,9 @@ export default function CRMPage() {
   };
 
   const fetchTablasApoyo = async () => {
+    const { data: dataUsuarios } = await supabase.from('usuarios').select('*');
+    if (dataUsuarios) setUsuarios(dataUsuarios);
+
     const { data: dataClientes } = await supabase.from('clientes').select('*');
     if (dataClientes) setClientes(dataClientes);
 
@@ -254,6 +259,7 @@ export default function CRMPage() {
     setEditingDealId(deal.id);
     
     setTitulo(deal.titulo || "");
+    setVendedorSeleccionado(deal.vendedor_id ? deal.vendedor_id.toString() : "");
     setClienteSeleccionado(deal.cliente_id ? deal.cliente_id.toString() : "");
     const clienteObj = clientes.find(c => c.id === deal.cliente_id);
     setEsAgencia(clienteObj?.es_agencia || false);
@@ -283,7 +289,7 @@ export default function CRMPage() {
     setIsModalOpen(true);
   };
 
-const handleSaveDeal = async () => {
+  const handleSaveDeal = async () => {
     if (!titulo.trim()) { alert("Por favor ingresa un Título."); return; }
     if (!clienteSeleccionado || elementosAcuerdo.length === 0) { alert("Selecciona un cliente y agrega al menos un elemento."); return; }
     if (!fechaDesde || !fechaHasta) { alert("Selecciona las fechas de vigencia."); return; }
@@ -295,7 +301,6 @@ const handleSaveDeal = async () => {
       const canalPrincipal = (tieneDigital && tieneInStore) ? 'Omnicanal' : (tieneDigital ? 'Digital' : 'InStore');
       const catalogoIdPrincipal = elementosAcuerdo[0].catalogoId;
 
-      // CONSOLIDACIÓN DE ADJUNTOS POR ELEMENTO + COMPATIBILIDAD CON ADJUNTOS DIRECTOS
       const todosLosAdjuntos = [
         ...elementosAcuerdo.flatMap(item => 
           (item.adjuntos || []).map((adj: Adjunto) => ({
@@ -317,8 +322,9 @@ const handleSaveDeal = async () => {
         descuento_porcentaje: descuento,
         fecha_desde: fechaDesde,
         fecha_hasta: fechaHasta,
-        adjuntos: todosLosAdjuntos, // <--- GUARDAMOS LA LISTA CONSOLIDADA Y ETIQUETADA
-        es_reclasificado: esReclasificado
+        adjuntos: todosLosAdjuntos,
+        es_reclasificado: esReclasificado,
+        vendedor_id: vendedorSeleccionado ? Number(vendedorSeleccionado) : null
       };
 
       let dealIdToUse = editingDealId;
@@ -326,8 +332,7 @@ const handleSaveDeal = async () => {
       if (modalMode === 'CREATE') {
         const { data, error } = await supabase.from('deals').insert([{ 
           ...dealData, 
-          stage: 'OPORTUNIDAD',
-          vendedor_id: currentUser?.id || null 
+          stage: 'OPORTUNIDAD'
         }]).select().single();
         if (error) throw error;
         dealIdToUse = data.id;
@@ -358,7 +363,6 @@ const handleSaveDeal = async () => {
     }
   };
 
-  // --- NUEVA FUNCIÓN PARA ENVIAR CORREO (ACTUALIZADA) ---
   const handleEnviarCorreo = async () => {
     const currentDeal = deals.find(d => d.id === editingDealId);
     if (!currentDeal) return;
@@ -378,7 +382,6 @@ const handleSaveDeal = async () => {
       if (!resultadoPdf) throw new Error("No se pudo generar el PDF.");
       const { pdfBase64, nombreArchivo } = resultadoPdf;
 
-      // Usamos los datos del usuario logueado, o unos por defecto si algo falla
       const nombreVendedor = currentUser?.nombre || 'Equipo Comercial';
       const emailVendedor = currentUser?.email || 'ar_carrefourmedia@carrefour.com';
 
@@ -412,6 +415,7 @@ const handleSaveDeal = async () => {
 
   const resetForm = () => {
     setTitulo("");
+    setVendedorSeleccionado(currentUser?.id?.toString() || "");
     setClienteSeleccionado("");
     setEsAgencia(false);
     setAuspicianteSeleccionado("");
@@ -522,6 +526,12 @@ const handleSaveDeal = async () => {
                       )}
                       
                       <p className="text-xs text-slate-400 mb-1">🏢 {deal.cliente?.nombre}</p>
+
+                      {/* MOSTRAR NOMBRE DEL VENDEDOR RESPONSABLE EN LA TARJETA */}
+                      <p className="text-[10px] text-slate-500 mb-2 flex items-center gap-1 mt-1">
+                        <span className="material-symbols-outlined text-[12px]">person</span>
+                        {deal.vendedor?.nombre || 'Sin asignar'}
+                      </p>
                       
                       {deal.adjuntos && deal.adjuntos.length > 0 && (
                         <div className="flex items-center gap-1 text-[10px] text-cyan-400 font-semibold mb-2">
@@ -558,10 +568,27 @@ const handleSaveDeal = async () => {
                 <div>
                   <h4 className="text-cyan-400 font-semibold mb-4 border-b border-white/10 pb-2">1. Datos y Vigencia</h4>
                   <div className="space-y-4">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">Título del Acuerdo *</label>
-                      <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:outline-none focus:border-cyan-400" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-400 block mb-1">Título del Acuerdo *</label>
+                        <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:outline-none focus:border-cyan-400" />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs font-semibold text-slate-400 block mb-1">Responsable / Vendedor *</label>
+                        <select 
+                          value={vendedorSeleccionado} 
+                          onChange={(e) => setVendedorSeleccionado(e.target.value)} 
+                          disabled={!isJefe}
+                          className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:outline-none focus:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+                        >
+                          {usuarios.map(u => (
+                            <option key={u.id} value={u.id}>{u.nombre} - {u.rol}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-slate-400 block mb-1">Cliente / Agencia *</label>

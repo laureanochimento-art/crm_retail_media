@@ -12,10 +12,12 @@ export default function CotizadorPage() {
   const [clientes, setClientes] = useState<any[]>([]);
   const [catalogo, setCatalogo] = useState<any[]>([]);
   const [tiendas, setTiendas] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
 
   const [titulo, setTitulo] = useState("");
+  const [vendedorSeleccionado, setVendedorSeleccionado] = useState("");
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [esAgencia, setEsAgencia] = useState(false);
   const [auspicianteSeleccionado, setAuspicianteSeleccionado] = useState("");
@@ -28,7 +30,6 @@ export default function CotizadorPage() {
   const [busquedaTienda, setBusquedaTienda] = useState("");
   const [esReclasificado, setEsReclasificado] = useState(false);
 
-  // ADJUNTOS ASOCIADOS AL ELEMENTO ACTUAL EN CONFIGURACIÓN
   const [adjuntosItemActual, setAdjuntosItemActual] = useState<Adjunto[]>([]);
   
   const [elementosAcuerdo, setElementosAcuerdo] = useState<any[]>([]);
@@ -49,8 +50,12 @@ export default function CotizadorPage() {
             return;
           }
           setCurrentUser(user);
+          setVendedorSeleccionado(user.id.toString());
         }
       }
+
+      const { data: dataUsuarios } = await supabase.from('usuarios').select('*');
+      if (dataUsuarios) setUsuarios(dataUsuarios);
 
       const { data: dataClientes } = await supabase.from('clientes').select('*');
       if (dataClientes) setClientes(dataClientes);
@@ -152,12 +157,11 @@ export default function CotizadorPage() {
       precioUnitario: itemCatalogo.precio_base,
       tiendas: tiendasSeleccionadas,
       subtotal: subtotalItem,
-      adjuntos: adjuntosItemActual // <--- ADJUNTOS VINCULADOS DIRECTAMENTE A ESTE ELEMENTO
+      adjuntos: adjuntosItemActual
     };
 
     setElementosAcuerdo([...elementosAcuerdo, nuevoItem]);
     
-    // Resetear formulario de elemento
     setElementoSeleccionado("");
     setTiendasSeleccionadas([]);
     setBusquedaTienda("");
@@ -195,7 +199,6 @@ export default function CotizadorPage() {
       const canalPrincipal = (tieneDigital && tieneInStore) ? 'Omnicanal' : (tieneDigital ? 'Digital' : 'InStore');
       const catalogoIdPrincipal = elementosAcuerdo[0].catalogoId;
 
-      // CONSOLIDAR ADJUNTOS ETIQUETADOS POR ELEMENTO
       const todosLosAdjuntos = elementosAcuerdo.flatMap(item => 
         (item.adjuntos || []).map((adj: Adjunto) => ({
           ...adj,
@@ -218,7 +221,7 @@ export default function CotizadorPage() {
           fecha_hasta: fechaHasta,
           es_reclasificado: esReclasificado,
           adjuntos: todosLosAdjuntos,
-          vendedor_id: currentUser?.id || null 
+          vendedor_id: vendedorSeleccionado ? Number(vendedorSeleccionado) : currentUser?.id 
         }
       ]).select().single();
 
@@ -258,21 +261,36 @@ export default function CotizadorPage() {
 
       <div className="flex flex-col lg:flex-row gap-6 max-w-7xl items-start">
         
-        {/* COLUMNA IZQ: CONFIGURADOR */}
         <div className="flex flex-col gap-6 flex-1 w-full">
           
           <div className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md">
             <h3 className="text-cyan-400 font-semibold mb-4 border-b border-white/10 pb-2">1. Datos del Acuerdo</h3>
             
-            <div className="mb-4">
-              <label className="text-xs font-semibold text-slate-400 block mb-2">Título del Acuerdo *</label>
-              <input 
-                type="text" 
-                placeholder="Ej: Campaña Verano 2024"
-                value={titulo} 
-                onChange={(e) => setTitulo(e.target.value)} 
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">Título del Acuerdo *</label>
+                <input 
+                  type="text" 
+                  placeholder="Ej: Campaña Verano 2024"
+                  value={titulo} 
+                  onChange={(e) => setTitulo(e.target.value)} 
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-400 block mb-2">Responsable / Vendedor *</label>
+                <select 
+                  value={vendedorSeleccionado} 
+                  onChange={(e) => setVendedorSeleccionado(e.target.value)} 
+                  disabled={currentUser?.rol !== 'JEFE_VENTAS'}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+                >
+                  {usuarios.map(u => (
+                    <option key={u.id} value={u.id}>{u.nombre} - {u.rol}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -391,7 +409,6 @@ export default function CotizadorPage() {
               </div>
             )}
 
-            {/* SECCIÓN DE SUBIDA DE ARCHIVOS VINCULADA AL ELEMENTO ACTUAL */}
             {elementoSeleccionado && (
               <div className="p-4 bg-slate-950/80 border border-cyan-500/30 rounded-lg space-y-3">
                 <label className="text-xs font-bold text-cyan-400 uppercase block">
@@ -451,7 +468,6 @@ export default function CotizadorPage() {
 
         </div>
 
-        {/* COLUMNA DER: RESUMEN / CARRITO */}
         <div className="w-full lg:w-[400px] bg-slate-900/80 border border-white/10 rounded-xl p-6 sticky top-24 shadow-2xl border-t-cyan-500/30">
           <div className="flex items-center gap-2 mb-6 border-b border-white/10 pb-4">
             <span className="material-symbols-outlined text-cyan-400">receipt_long</span>
@@ -472,7 +488,6 @@ export default function CotizadorPage() {
                     {item.canal} • {item.canal === 'InStore' ? `${item.tiendas.length} Tiendas` : 'Campaña única'}
                   </p>
 
-                  {/* VISUALIZACIÓN DE ARCHIVOS ADJUNTOS DEL ITEM */}
                   {item.adjuntos && item.adjuntos.length > 0 && (
                     <div className="flex flex-wrap gap-1 border-t border-slate-700/50 pt-2 mt-1">
                       {item.adjuntos.map((adj: Adjunto, idx: number) => (
