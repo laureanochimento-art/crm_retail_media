@@ -40,9 +40,12 @@ export default function CRMPage() {
   const [elementoSeleccionado, setElementoSeleccionado] = useState("");
   const [tiendasSeleccionadas, setTiendasSeleccionadas] = useState<number[]>([]);
   const [busquedaTienda, setBusquedaTienda] = useState("");
+  const [cantidad, setCantidad] = useState(1); 
+  const [descuentoItem, setDescuentoItem] = useState(0); 
   
   const [elementosAcuerdo, setElementosAcuerdo] = useState<any[]>([]);
-  const [descuento, setDescuento] = useState(0);
+  const [tasaInflacion, setTasaInflacion] = useState(0);
+  const [descuentoGlobal, setDescuentoGlobal] = useState(0); 
   
   const [adjuntos, setAdjuntos] = useState<Adjunto[]>([]);
   const [subiendoArchivo, setSubiendoArchivo] = useState(false);
@@ -135,9 +138,9 @@ export default function CRMPage() {
     return true;
   });
 
-  const totalPipeline = dealsFiltrados.filter((d) => d.stage !== "PERDIDO").reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-  const totalPerdido = dealsFiltrados.filter((d) => d.stage === "PERDIDO").reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
-  const totalCerrado = dealsFiltrados.filter((d) => d.stage === "FACTURADO").reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  const totalPipeline = dealsFiltrados.filter((d) => d.stage !== "PERDIDO" && !d.es_reclasificado).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  const totalPerdido = dealsFiltrados.filter((d) => d.stage === "PERDIDO" && !d.es_reclasificado).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  const totalCerrado = dealsFiltrados.filter((d) => d.stage === "FACTURADO" && !d.es_reclasificado).reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
   const totalConcluidos = totalCerrado + totalPerdido;
   const ratioPerdida = totalConcluidos > 0 ? ((totalPerdido / totalConcluidos) * 100).toFixed(1) : "0.0";
 
@@ -180,11 +183,43 @@ export default function CRMPage() {
 
   const handleAgregarElemento = () => {
     if (!elementoSeleccionado) return;
-    if (canal === 'InStore' && tiendasSeleccionadas.length === 0) { alert("Selecciona al menos una tienda para InStore."); return; }
+    if (!fechaDesde || !fechaHasta) {
+      alert("Debes establecer la 'Vigencia Desde' y 'Vigencia Hasta' antes de agregar elementos para calcular los periodos.");
+      return;
+    }
+    if (canal === 'InStore' && tiendasSeleccionadas.length === 0) { 
+      alert("Selecciona al menos una tienda para InStore."); 
+      return; 
+    }
+    
     const itemCatalogo = catalogo.find(c => c.id.toString() === elementoSeleccionado);
     if (!itemCatalogo) return;
-    const multiplicador = canal === 'InStore' ? tiendasSeleccionadas.length : 1;
-    const subtotalItem = itemCatalogo.precio_base * multiplicador;
+
+    let multiplicadorTiempo = 1;
+    let labelPeriodo = 'Campaña única';
+    
+    const d1 = new Date(`${fechaDesde}T12:00:00Z`);
+    const d2 = new Date(`${fechaHasta}T12:00:00Z`);
+
+    if (d2 >= d1) {
+      if (itemCatalogo.periodo === 'Semanal') {
+        const diffTime = d2.getTime() - d1.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        multiplicadorTiempo = Math.ceil(diffDays / 7);
+        labelPeriodo = `${multiplicadorTiempo} Semana(s)`;
+      } else if (itemCatalogo.periodo === 'Mensual') {
+        const m1 = d1.getUTCFullYear() * 12 + d1.getUTCMonth();
+        const m2 = d2.getUTCFullYear() * 12 + d2.getUTCMonth();
+        multiplicadorTiempo = (m2 - m1) + 1;
+        labelPeriodo = `${multiplicadorTiempo} Mes(es)`;
+      }
+    }
+
+    const multiplicadorTiendas = canal === 'InStore' ? tiendasSeleccionadas.length : 1;
+    const multiplicadorCantidad = canal === 'InStore' ? cantidad : 1;
+
+    const subtotalItem = itemCatalogo.precio_base * multiplicadorTiendas * multiplicadorTiempo * multiplicadorCantidad;
+
     const nuevoItem = {
       idUnico: Date.now(),
       catalogoId: itemCatalogo.id,
@@ -192,17 +227,23 @@ export default function CRMPage() {
       canal: canal,
       precioUnitario: itemCatalogo.precio_base,
       tiendas: tiendasSeleccionadas,
+      cantidad: multiplicadorCantidad,
+      labelPeriodo,
+      descuento: descuentoItem, 
       subtotal: subtotalItem
     };
+    
     setElementosAcuerdo([...elementosAcuerdo, nuevoItem]);
     setElementoSeleccionado("");
     setTiendasSeleccionadas([]);
     setBusquedaTienda("");
+    setCantidad(1);
+    setDescuentoItem(0);
   };
 
   const eliminarElemento = (idUnico: number) => setElementosAcuerdo(elementosAcuerdo.filter(item => item.idUnico !== idUnico));
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, categoria: 'DISEÑO' | 'EAN' | 'RENDER') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, categoria: 'DISEÑO_DESKTOP' | 'DISEÑO_MOBILE' | 'EAN' | 'RENDER') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -213,11 +254,7 @@ export default function CRMPage() {
       const filePath = `${fileName}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage.from('adjuntos').upload(filePath, file);
-      
-      if (uploadError) {
-        console.error("Error detallado de Supabase:", uploadError);
-        throw new Error(uploadError.message || "Error desconocido al subir a Supabase");
-      }
+      if (uploadError) throw new Error(uploadError.message || "Error desconocido al subir a Supabase");
 
       const { data } = supabase.storage.from('adjuntos').getPublicUrl(filePath);
 
@@ -232,20 +269,25 @@ export default function CRMPage() {
 
       setAdjuntos([...adjuntos, nuevoAdjunto]);
     } catch (error: any) {
-      console.error("Error subiendo archivo:", error);
       alert(`Error exacto de Supabase: ${error.message}`);
     } finally {
       setSubiendoArchivo(false);
     }
   };
 
-  const removeAdjunto = (id: string) => {
-    setAdjuntos(adjuntos.filter(a => a.id !== id));
-  };
+  const removeAdjunto = (id: string) => setAdjuntos(adjuntos.filter(a => a.id !== id));
 
-  const subtotalGlobal = elementosAcuerdo.reduce((acc, item) => acc + item.subtotal, 0);
-  const montoDescuento = (subtotalGlobal * descuento) / 100;
-  const totalFinal = subtotalGlobal - montoDescuento;
+  // MATEMÁTICA ACTUALIZADA
+  const subtotalBaseGlobal = elementosAcuerdo.reduce((acc, item) => acc + item.subtotal, 0);
+  
+  const sumaItemsFinal = elementosAcuerdo.reduce((acc, item) => {
+    const baseInflada = item.subtotal * (1 + (tasaInflacion / 100));
+    const montoDesc = baseInflada * ((item.descuento || 0) / 100);
+    return acc + (baseInflada - montoDesc);
+  }, 0);
+
+  const montoDescuentoGlobal = sumaItemsFinal * (descuentoGlobal / 100);
+  const totalFinal = sumaItemsFinal - montoDescuentoGlobal;
 
   const openCreateModal = () => {
     resetForm();
@@ -266,14 +308,25 @@ export default function CRMPage() {
     setAuspicianteSeleccionado(deal.auspiciante_id ? deal.auspiciante_id.toString() : "");
     setFechaDesde(deal.fecha_desde || "");
     setFechaHasta(deal.fecha_hasta || "");
-    setDescuento(deal.descuento_porcentaje || 0);
+    setDescuentoGlobal(deal.descuento_porcentaje || 0); // RECUPERA DESCUENTO GENERAL
+    setTasaInflacion(deal.tasa_inflacion || 0);
     setEsReclasificado(deal.es_reclasificado || false);
     
     setAdjuntos(deal.adjuntos || []);
 
-    if (deal.catalogo) {
+    if (deal.elementos_json && deal.elementos_json.length > 0) {
+      setElementosAcuerdo(deal.elementos_json);
+    } else if (deal.catalogo) {
+      // Reconstrucción de acuerdos viejos
       const tiendasIds = deal.tiendas ? deal.tiendas.map(t => t.id) : [];
-      const multiplicador = (deal.channel === 'InStore' || deal.channel === 'Omnicanal') && tiendasIds.length > 0 ? tiendasIds.length : 1;
+      let subtotalEstimado = deal.amount;
+      if (deal.descuento_porcentaje > 0) {
+        subtotalEstimado = subtotalEstimado / (1 - (deal.descuento_porcentaje / 100));
+      }
+      if (deal.tasa_inflacion > 0) {
+        subtotalEstimado = subtotalEstimado / (1 + (deal.tasa_inflacion / 100));
+      }
+
       const itemReconstruido = {
         idUnico: Date.now(),
         catalogoId: deal.catalogo_id,
@@ -281,7 +334,10 @@ export default function CRMPage() {
         canal: deal.catalogo.canal,
         precioUnitario: deal.catalogo.precio_base,
         tiendas: tiendasIds,
-        subtotal: deal.catalogo.precio_base * multiplicador
+        cantidad: 1, 
+        labelPeriodo: "Periodo Original",
+        descuento: 0, // En los viejos, el descuento estaba todo en el general
+        subtotal: subtotalEstimado
       };
       setElementosAcuerdo([itemReconstruido]);
     }
@@ -319,10 +375,12 @@ export default function CRMPage() {
         cliente_id: Number(clienteSeleccionado),
         auspiciante_id: auspicianteSeleccionado ? Number(auspicianteSeleccionado) : null,
         catalogo_id: Number(catalogoIdPrincipal),
-        descuento_porcentaje: descuento,
+        descuento_porcentaje: descuentoGlobal, 
+        tasa_inflacion: tasaInflacion,
         fecha_desde: fechaDesde,
         fecha_hasta: fechaHasta,
         adjuntos: todosLosAdjuntos,
+        elementos_json: elementosAcuerdo, 
         es_reclasificado: esReclasificado,
         vendedor_id: vendedorSeleccionado ? Number(vendedorSeleccionado) : null
       };
@@ -368,7 +426,7 @@ export default function CRMPage() {
     if (!currentDeal) return;
 
     const emailDestino = window.prompt(
-      "Ingresa el correo del destinatario (puedes poner tu correo para probar):", 
+      "Ingresa el correo del destinatario:", 
       currentDeal.cliente?.contacto_email || ""
     );
 
@@ -376,7 +434,7 @@ export default function CRMPage() {
 
     setEnviandoCorreo(true);
     try {
-      const dealParaPDF = { ...currentDeal, adjuntos: adjuntos };
+      const dealParaPDF = { ...currentDeal, adjuntos: adjuntos, elementos_json: elementosAcuerdo };
       const resultadoPdf = await generarAcuerdoPDF(dealParaPDF, true);
       
       if (!resultadoPdf) throw new Error("No se pudo generar el PDF.");
@@ -403,10 +461,8 @@ export default function CRMPage() {
         const errorData = await res.json();
         throw new Error(errorData.error || "Error desconocido al enviar.");
       }
-
       alert("¡Acuerdo enviado exitosamente por correo electrónico!");
     } catch (error: any) {
-      console.error("Error en envío:", error);
       alert(`Hubo un error al enviar el correo: ${error.message}`);
     } finally {
       setEnviandoCorreo(false);
@@ -425,8 +481,11 @@ export default function CRMPage() {
     setElementoSeleccionado("");
     setTiendasSeleccionadas([]);
     setBusquedaTienda("");
+    setCantidad(1);
+    setDescuentoItem(0);
     setElementosAcuerdo([]);
-    setDescuento(0);
+    setTasaInflacion(0);
+    setDescuentoGlobal(0);
     setAdjuntos([]);
     setEsReclasificado(false);
     setEditingDealId(null);
@@ -451,11 +510,11 @@ export default function CRMPage() {
         <div className="flex items-center gap-4 bg-slate-900/80 border border-white/10 p-3 rounded-xl backdrop-blur-md">
           <div className="px-3 border-r border-slate-800">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Pipeline</span>
-            <span className="text-lg font-bold text-cyan-400">${totalPipeline.toLocaleString()}</span>
+            <span className="text-lg font-bold text-cyan-400">${totalPipeline.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
           </div>
           <div className="px-3 border-r border-slate-800">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Facturado</span>
-            <span className="text-lg font-bold text-emerald-400">${totalCerrado.toLocaleString()}</span>
+            <span className="text-lg font-bold text-emerald-400">${totalCerrado.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
           </div>
           <div className="px-3">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Ratio de Pérdida</span>
@@ -501,7 +560,7 @@ export default function CRMPage() {
                   <h2 className={`font-bold text-xs tracking-wider uppercase ${stage === "PERDIDO" ? 'text-rose-400' : 'text-slate-300'}`}>{stage}</h2>
                   <span className="bg-slate-800 text-[10px] font-mono px-2 py-0.5 rounded-full text-slate-400">{dealsEtapa.length}</span>
                 </div>
-                <div className="text-sm font-extrabold text-cyan-400 mt-1">${montoEtapa.toLocaleString()}</div>
+                <div className="text-sm font-extrabold text-cyan-400 mt-1">${montoEtapa.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
               </div>
               <div className="p-3 flex-1 overflow-y-auto space-y-3">
                 {dealsEtapa.map((deal) => {
@@ -527,7 +586,6 @@ export default function CRMPage() {
                       
                       <p className="text-xs text-slate-400 mb-1">🏢 {deal.cliente?.nombre}</p>
 
-                      {/* MOSTRAR NOMBRE DEL VENDEDOR RESPONSABLE EN LA TARJETA */}
                       <p className="text-[10px] text-slate-500 mb-2 flex items-center gap-1 mt-1">
                         <span className="material-symbols-outlined text-[12px]">person</span>
                         {deal.vendedor?.nombre || 'Sin asignar'}
@@ -541,7 +599,7 @@ export default function CRMPage() {
                       )}
 
                       <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-700/50">
-                        <span className="font-bold text-cyan-400 text-sm">${Number(deal.amount).toLocaleString()}</span>
+                        <span className="font-bold text-cyan-400 text-sm">${Number(deal.amount).toLocaleString(undefined, {maximumFractionDigits:0})}</span>
                         <span className="text-[9px] font-extrabold px-2 py-0.5 rounded uppercase bg-slate-800 text-slate-300">{deal.channel}</span>
                       </div>
                     </div>
@@ -617,23 +675,38 @@ export default function CRMPage() {
                         <label className="flex items-center gap-2 text-sm text-white cursor-pointer"><input type="radio" checked={canal === 'InStore'} onChange={() => { setCanal('InStore'); setElementoSeleccionado(""); }} className="text-amber-500 bg-slate-900 border-slate-700" /> InStore</label>
                       </div>
 
-                      {canal === 'InStore' && (
-                        <div className="mt-1 mb-3">
-                          <label className="flex items-center gap-2 text-sm text-slate-300 hover:text-white cursor-pointer w-fit p-2 bg-slate-800/50 rounded-lg border border-slate-700/50 transition-colors">
-                            <input 
-                              type="checkbox" 
-                              checked={esReclasificado} 
-                              onChange={(e) => setEsReclasificado(e.target.checked)} 
-                              className="rounded border-slate-600 bg-slate-900 text-amber-500 focus:ring-amber-500" 
-                            />
-                            <span>⚠️ Espacio Reclasificado</span>
-                          </label>
-                        </div>
-                      )}
+                      <div className="mt-1 mb-3">
+                        <label className="flex items-center gap-2 text-sm text-slate-300 hover:text-white cursor-pointer w-fit p-2 bg-slate-800/50 rounded-lg border border-slate-700/50 transition-colors">
+                          <input 
+                            type="checkbox" 
+                            checked={esReclasificado} 
+                            onChange={(e) => setEsReclasificado(e.target.checked)} 
+                            className="rounded border-slate-600 bg-slate-900 text-amber-500 focus:ring-amber-500" 
+                          />
+                          <span>⚠️ Espacio Reclasificado</span>
+                        </label>
+                      </div>
                     </div>
+                    
                     <div>
                       <SearchableSelect options={opcionesCatalogo} value={elementoSeleccionado} onChange={setElementoSeleccionado} placeholder={`Buscar espacio ${canal}...`} />
                     </div>
+
+                    {elementoSeleccionado && (
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        {canal === 'InStore' && (
+                          <div>
+                            <label className="text-xs font-semibold text-slate-400 block mb-2">Unidades por tienda *</label>
+                            <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:outline-none focus:border-amber-400" />
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-xs font-semibold text-slate-400 block mb-2">Descuento aplicado al ítem (%)</label>
+                          <input type="number" min="0" max="100" value={descuentoItem} onChange={(e) => setDescuentoItem(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:outline-none focus:border-cyan-400" />
+                        </div>
+                      </div>
+                    )}
+
                     {canal === 'InStore' && elementoSeleccionado && (
                       <div className="p-3 bg-slate-800/50 rounded border border-slate-700">
                         <input type="text" value={busquedaTienda} onChange={(e) => setBusquedaTienda(e.target.value)} placeholder="Buscar tienda..." className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white mb-2" />
@@ -657,18 +730,22 @@ export default function CRMPage() {
                   </h4>
                   
                   {canal === 'Digital' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="border-2 border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-4 flex flex-col items-center justify-center text-center relative hover:border-cyan-500/50 transition-colors">
-                        <span className="material-symbols-outlined text-3xl text-slate-500 mb-1">imagesmode</span>
-                        <p className="text-sm text-slate-300 font-bold mb-1">Diseños a subir</p>
-                        <p className="text-[10px] text-slate-500">JPG, PNG, GIF</p>
-                        <input type="file" onChange={(e) => handleFileUpload(e, 'DISEÑO')} disabled={subiendoArchivo} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="border-2 border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-3 flex flex-col items-center justify-center text-center relative hover:border-cyan-500/50 transition-colors">
+                        <span className="material-symbols-outlined text-2xl text-slate-500 mb-1">desktop_windows</span>
+                        <p className="text-xs text-slate-300 font-bold mb-1">Diseño Desktop</p>
+                        <input type="file" onChange={(e) => handleFileUpload(e, 'DISEÑO_DESKTOP')} disabled={subiendoArchivo} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
                       </div>
                       
-                      <div className="border-2 border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-4 flex flex-col items-center justify-center text-center relative hover:border-cyan-500/50 transition-colors">
-                        <span className="material-symbols-outlined text-3xl text-slate-500 mb-1">list_alt</span>
-                        <p className="text-sm text-slate-300 font-bold mb-1">EANs de la Campaña</p>
-                        <p className="text-[10px] text-slate-500">CSV, Excel</p>
+                      <div className="border-2 border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-3 flex flex-col items-center justify-center text-center relative hover:border-cyan-500/50 transition-colors">
+                        <span className="material-symbols-outlined text-2xl text-slate-500 mb-1">smartphone</span>
+                        <p className="text-xs text-slate-300 font-bold mb-1">Diseño Mobile</p>
+                        <input type="file" onChange={(e) => handleFileUpload(e, 'DISEÑO_MOBILE')} disabled={subiendoArchivo} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
+                      </div>
+                      
+                      <div className="border-2 border-dashed border-slate-700 bg-slate-900/50 rounded-lg p-3 flex flex-col items-center justify-center text-center relative hover:border-cyan-500/50 transition-colors">
+                        <span className="material-symbols-outlined text-2xl text-slate-500 mb-1">list_alt</span>
+                        <p className="text-xs text-slate-300 font-bold mb-1">EANs (CSV)</p>
                         <input type="file" onChange={(e) => handleFileUpload(e, 'EAN')} disabled={subiendoArchivo} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" />
                       </div>
                     </div>
@@ -697,11 +774,11 @@ export default function CRMPage() {
                             </span>
                             
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                              adj.categoria === 'DISEÑO' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                              adj.categoria?.includes('DISEÑO') ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
                               adj.categoria === 'EAN' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                               'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                             }`}>
-                              {adj.categoria || 'ADJUNTO'}
+                              {adj.categoria?.replace('DISEÑO_', '') || 'ADJUNTO'}
                             </span>
 
                             <a href={adj.url} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline truncate max-w-[150px]">
@@ -726,28 +803,48 @@ export default function CRMPage() {
                     <h3 className="font-semibold text-white">Resumen</h3>
                   </div>
                   <div className="max-h-60 overflow-y-auto space-y-2 mb-4">
-                    {elementosAcuerdo.map((item) => (
-                      <div key={item.idUnico} className="bg-slate-800/80 p-2 rounded border border-slate-700 relative group text-sm">
-                        <div className="flex justify-between items-start mb-1 pr-6"><span className="font-medium text-white text-xs leading-tight">{item.nombre}</span></div>
-                        <div className="flex justify-between items-end mt-2">
-                          <p className="text-[10px] text-slate-400">{item.canal}</p>
-                          <span className="text-cyan-400 font-semibold text-xs">${item.subtotal.toLocaleString()}</span>
+                    {elementosAcuerdo.map((item) => {
+                      const baseInflada = item.subtotal * (1 + (tasaInflacion / 100));
+                      const mDesc = baseInflada * ((item.descuento || 0) / 100);
+                      const precioItemFinal = baseInflada - mDesc;
+
+                      return (
+                        <div key={item.idUnico} className="bg-slate-800/80 p-2 rounded border border-slate-700 relative group text-sm">
+                          <div className="flex justify-between items-start mb-1 pr-6">
+                            <span className="font-medium text-white text-xs leading-tight">{item.nombre}</span>
+                            <span className="text-cyan-400 font-semibold text-xs">${precioItemFinal.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                          </div>
+                          <div className="flex justify-between items-end mt-2">
+                            <p className="text-[10px] text-slate-400">{item.canal} • {item.canal === 'InStore' ? `${item.cantidad}x` : '1x'}</p>
+                            {item.descuento > 0 && (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                                -{item.descuento}% OFF
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => eliminarElemento(item.idUnico)} className="absolute top-2 right-2 text-red-400 opacity-0 group-hover:opacity-100"><span className="material-symbols-outlined text-sm">close</span></button>
                         </div>
-                        <button onClick={() => eliminarElemento(item.idUnico)} className="absolute top-2 right-2 text-red-400 opacity-0 group-hover:opacity-100"><span className="material-symbols-outlined text-sm">close</span></button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="space-y-3 pt-4 border-t border-white/10">
-                  <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Subtotal</span><span className="text-white">${subtotalGlobal.toLocaleString()}</span></div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-400">Desc. (%)</span>
-                    <input type="number" value={descuento} onChange={(e) => setDescuento(Number(e.target.value))} className="w-16 bg-slate-800 border border-slate-700 rounded p-1 text-white text-right focus:outline-none focus:border-cyan-400" />
+                    <span className="text-slate-400">Suma Base (Sin ajustes)</span>
+                    <span className="text-white">${subtotalBaseGlobal.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-800 p-2 rounded">
+                    <span className="text-xs text-slate-300">Inflación General (%)</span>
+                    <input type="number" step="0.1" value={tasaInflacion} onChange={e => setTasaInflacion(Number(e.target.value))} className="w-16 bg-slate-900 text-white border border-slate-700 rounded p-1 text-right focus:outline-none focus:border-cyan-400" />
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-400">Descuento General (%)</span>
+                    <input type="number" value={descuentoGlobal} onChange={(e) => setDescuentoGlobal(Number(e.target.value))} className="w-16 bg-slate-800 border border-slate-700 rounded p-1 text-white text-right focus:outline-none focus:border-cyan-400" />
                   </div>
                   <div className="flex justify-between items-end bg-slate-900 p-3 rounded border border-cyan-500/20 mt-2">
-                    <span className="text-white font-semibold text-xs">Total</span>
-                    <span className="text-lg font-bold text-cyan-400">${totalFinal.toLocaleString()}</span>
+                    <span className="text-white font-semibold text-xs">Total Final</span>
+                    <span className="text-lg font-bold text-cyan-400">${totalFinal.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
                   </div>
 
                   <button type="button" onClick={handleSaveDeal} disabled={guardando} className="w-full bg-cyan-500 text-slate-900 hover:bg-cyan-400 font-bold rounded py-2 text-sm mt-2">
@@ -764,7 +861,7 @@ export default function CRMPage() {
                           if (currentDeal) {
                             setGenerandoPdf(true); 
                             try {
-                              const dealParaPDF = { ...currentDeal, adjuntos: adjuntos };
+                              const dealParaPDF = { ...currentDeal, adjuntos: adjuntos, elementos_json: elementosAcuerdo };
                               await generarAcuerdoPDF(dealParaPDF);
                             } catch (error) {
                               alert("Hubo un error al generar el PDF.");

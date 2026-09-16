@@ -51,7 +51,8 @@ export interface Adjunto {
   url: string;
   tipo: string; 
   tamaño?: number;
-  categoria?: 'DISEÑO' | 'EAN' | 'RENDER' | 'GENERAL'; // <-- ESTA ES LA LÍNEA NUEVA
+  // --- LÍNEA MODIFICADA ---
+  categoria?: 'DISEÑO' | 'DISEÑO_DESKTOP' | 'DISEÑO_MOBILE' | 'EAN' | 'RENDER' | 'GENERAL';
   elemento_nombre?: string;
   catalogo_id?: number;
 }
@@ -67,18 +68,17 @@ export interface Deal {
   channel: 'Digital' | 'InStore' | 'Omnicanal';
   stage: 'OPORTUNIDAD' | 'COTIZADO' | 'POR_FACTURAR' | 'FACTURADO' | 'PERDIDO';
   descuento_porcentaje: number;
+  tasa_inflacion?: number; // <--- NUEVO CAMPO
   fecha_desde?: string | null;
   fecha_hasta?: string | null;
   created_at?: string;
   es_reclasificado?: boolean;
   monto_facturado?: number;
-  
-  // NUEVO CAMPO DE ADJUNTOS
   adjuntos?: Adjunto[];
-  
   cliente?: Cliente;
   marca_auspiciante?: Cliente;
   catalogo?: CatalogoItem;
   tiendas?: Tienda[];
   vendedor?: Usuario; 
+  elementos_json?: any[];
 }

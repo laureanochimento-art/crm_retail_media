@@ -114,6 +114,22 @@ export default function ClientLayoutProvider({ children }: { children: React.Rea
                   Dashboard
                 </Link>
               </li>
+
+              {/* Módulo de Clientes */}
+              <li>
+                <Link href="/clientes" className={`px-4 py-3 flex items-center gap-3 transition-all hover:bg-white/5 ${pathname === '/clientes' ? 'text-cyan-400 font-bold bg-white/5 border-r-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}>
+                  <span className="material-symbols-outlined">storefront</span>
+                  Clientes
+                </Link>
+              </li>
+
+              {/* Módulo de Catálogo */}
+              <li>
+                <Link href="/catalogo" className={`px-4 py-3 flex items-center gap-3 transition-all hover:bg-white/5 ${pathname === '/catalogo' ? 'text-cyan-400 font-bold bg-white/5 border-r-2 border-cyan-400' : 'text-slate-400 hover:text-white'}`}>
+                  <span className="material-symbols-outlined">sell</span>
+                  Catálogo
+                </Link>
+              </li>
               
               {userRole === 'JEFE_VENTAS' && (
                 <li>

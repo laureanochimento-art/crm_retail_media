@@ -17,7 +17,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // Tu máscara oficial
     const correoMascara = "ar_carrefourmedia@carrefour.com"; 
 
     // PARACAÍDAS: Si remitenteNombre llega vacío, usamos 'Equipo Comercial'
@@ -27,7 +26,8 @@ export async function POST(request: Request) {
     const mailOptions = {
       from: `"${nombreSeguro} | Carrefour Media" <${correoMascara}>`,
       to: destinatario,
-      cc: "laureano_chimento@carrefour.com", 
+      // --- MODIFICACIÓN: AGREGAMOS AL REMITENTE EN COPIA (CC) ---
+      cc: [emailSeguro, "laureano_chimento@carrefour.com"].join(', '), 
       replyTo: emailSeguro, 
       subject: asunto,
       text: mensaje,
