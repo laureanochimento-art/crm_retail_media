@@ -29,9 +29,10 @@ export interface Tienda {
 
 export interface CatalogoItem {
   id: number;
-  canal: 'Digital' | 'InStore';
   elemento: string;
+  canal: 'Digital' | 'InStore' | 'Omnicanal';
   precio_base: number;
+  periodo?: string; // <--- ¡AGREGA ESTA LÍNEA!
   created_at?: string;
 }
 
