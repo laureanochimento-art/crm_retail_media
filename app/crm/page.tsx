@@ -109,8 +109,24 @@ export default function CRMPage() {
   const canCreate = !isAdministrativo;
 
   const canEditDeal = (deal: Deal) => {
+    // El Jefe de Ventas siempre tiene permisos totales
     if (isJefe) return true;
-    if (isVendedor && deal.vendedor_id === currentUser?.id) return true;
+
+    // Si es Vendedor, verificamos que sea su acuerdo
+    if (isVendedor && deal.vendedor_id === currentUser?.id) {
+      // Definimos las etapas donde el vendedor ya no puede tocar el acuerdo
+      const etapasBloqueadas = ["POR_FACTURAR", "FACTURADO", "PERDIDO"];
+      
+      // Si el acuerdo está en una de esas etapas, le negamos el permiso
+      if (etapasBloqueadas.includes(deal.stage)) {
+        return false;
+      }
+      
+      // Si está en OPORTUNIDAD o COTIZADO, puede editar
+      return true;
+    }
+    
+    // Administrativos u otros roles no pueden editar
     return false;
   };
 
