@@ -112,21 +112,22 @@ export default function CRMPage() {
     // El Jefe de Ventas siempre tiene permisos totales
     if (isJefe) return true;
 
-    // Si es Vendedor, verificamos que sea su acuerdo
-    if (isVendedor && deal.vendedor_id === currentUser?.id) {
-      // Definimos las etapas donde el vendedor ya no puede tocar el acuerdo
+    // Evaluamos si es Administrador, o si es un Vendedor editando su propio deal
+    const isOwnerVendedor = isVendedor && deal.vendedor_id === currentUser?.id;
+
+    if (isAdministrativo || isOwnerVendedor) {
+      // Definimos a partir de qué etapas se bloquea la edición
       const etapasBloqueadas = ["POR_FACTURAR", "FACTURADO", "PERDIDO"];
       
-      // Si el acuerdo está en una de esas etapas, le negamos el permiso
+      // Si el acuerdo YA ESTÁ en una etapa bloqueada, perdieron el control
       if (etapasBloqueadas.includes(deal.stage)) {
         return false;
       }
       
-      // Si está en OPORTUNIDAD o COTIZADO, puede editar
+      // Si está en OPORTUNIDAD o COTIZADO, pueden editar y arrastrar hacia POR_FACTURAR
       return true;
     }
     
-    // Administrativos u otros roles no pueden editar
     return false;
   };
 
@@ -293,7 +294,6 @@ export default function CRMPage() {
 
   const removeAdjunto = (id: string) => setAdjuntos(adjuntos.filter(a => a.id !== id));
 
-  // MATEMÁTICA ACTUALIZADA
   const subtotalBaseGlobal = elementosAcuerdo.reduce((acc, item) => acc + item.subtotal, 0);
   
   const sumaItemsFinal = elementosAcuerdo.reduce((acc, item) => {
@@ -324,7 +324,7 @@ export default function CRMPage() {
     setAuspicianteSeleccionado(deal.auspiciante_id ? deal.auspiciante_id.toString() : "");
     setFechaDesde(deal.fecha_desde || "");
     setFechaHasta(deal.fecha_hasta || "");
-    setDescuentoGlobal(deal.descuento_porcentaje || 0); // RECUPERA DESCUENTO GENERAL
+    setDescuentoGlobal(deal.descuento_porcentaje || 0); 
     setTasaInflacion(deal.tasa_inflacion || 0);
     setEsReclasificado(deal.es_reclasificado || false);
     
@@ -333,7 +333,6 @@ export default function CRMPage() {
     if (deal.elementos_json && deal.elementos_json.length > 0) {
       setElementosAcuerdo(deal.elementos_json);
     } else if (deal.catalogo) {
-      // Reconstrucción de acuerdos viejos
       const tiendasIds = deal.tiendas ? deal.tiendas.map(t => t.id) : [];
       let subtotalEstimado = deal.amount;
       if (deal.descuento_porcentaje > 0) {
@@ -352,7 +351,7 @@ export default function CRMPage() {
         tiendas: tiendasIds,
         cantidad: 1, 
         labelPeriodo: "Periodo Original",
-        descuento: 0, // En los viejos, el descuento estaba todo en el general
+        descuento: 0, 
         subtotal: subtotalEstimado
       };
       setElementosAcuerdo([itemReconstruido]);
