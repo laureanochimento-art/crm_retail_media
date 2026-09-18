@@ -47,17 +47,57 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   // --- VIGENCIA ---
   doc.text(`Período de Vigencia desde: ${deal.fecha_desde || ''} | Hasta: ${deal.fecha_hasta || ''}`, 14, 106); 
 
-  const textoIntroduccion = `Por medio de la presente hacemos llegar a Ud. la siguiente propuesta de servicios con vigencia para el período previamente indicado, durante la cual INC S.A. cumplirá los servicios que se detallan, y en contraprestación, ${nombreCliente} le reconocerá los montos en pesos o porcentajes descriptos seguidamente:`; 
+  // --- TEXTO INTRODUCTORIO ---
+  // Modificado para referenciar el Anexo I
+  const textoIntroduccion = `Por medio de la presente hacemos llegar a Ud. la siguiente propuesta de servicios con vigencia para el período previamente indicado, durante la cual INC S.A. cumplirá los servicios que se detallan en el Anexo I, y en contraprestación, ${nombreCliente} le reconocerá los montos en pesos o porcentajes allí descriptos:`; 
   const splitIntro = doc.splitTextToSize(textoIntroduccion, 180);
   doc.text(splitIntro, 14, 114);
 
-  // --- TABLA DE ESPACIOS ---
-  let yPos = 116 + (splitIntro.length * 5);
+  let currentY = 114 + (splitIntro.length * 5) + 5;
+
+  // --- TEXTO REMARCADO (NUEVO) ---
+  doc.setFont("helvetica", "bold");
+  const textoRemarcado = "IMPORTANTE: En caso de que no se retire el material finalizado el plazo del acuerdo, se aplicarán cargos correspondientes al plazo excedido.";
+  const splitRemarcado = doc.splitTextToSize(textoRemarcado, 180);
+  doc.text(splitRemarcado, 14, currentY);
+  doc.setFont("helvetica", "normal");
+
+  currentY += (splitRemarcado.length * 5) + 10;
+
+  // --- CIERRE Y FIRMAS (MOVIDO A LA PRIMERA PÁGINA) ---
+  doc.setFontSize(9);
+  const textoCierre = `Esta propuesta es irrevocable y se considerará aceptada con la recepción y posterior aceptación de la primera Factura o Nota de débito emitida por INC S.A. conforme a lo aquí dispuesto.`; 
+  const splitCierre = doc.splitTextToSize(textoCierre, 180);
+  doc.text(splitCierre, 14, currentY);
+
+  currentY += (splitCierre.length * 5) + 20;
+  doc.text(`Firma por parte de INC S.A.: ___________________________`, 14, currentY); 
+  
+  currentY += 15;
+  const aceptacion = `Por la presente, acuso recibo de la propuesta de servicios de INC S.A. con fecha ${fechaActual}, aceptando la misma.`; 
+  const splitAceptacion = doc.splitTextToSize(aceptacion, 180);
+  doc.text(splitAceptacion, 14, currentY);
+  
+  currentY += 15;
+  doc.text(`Firma ${nombreCliente}: ___________________________`, 14, currentY);
+
+  // ==========================================
+  // --- ANEXO I: TABLA Y RESUMEN FINANCIERO ---
+  // ==========================================
+  doc.addPage();
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.text("Anexo I: Detalle de Espacios y Resumen Financiero", 14, 20);
+  
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  
+  let yPos = 30;
   
   const tableColumn = ["Elemento", "Cantidad", "Tiendas", "Precio base", "Precio c/ desc", "Ahorro"];
   const tableRows: any[] = [];
   
-  let sumaBasePura = 0;
+  let sumaBaseTotal = 0; 
   let sumaAhorroItems = 0;
   let sumaTotalConDescuentoItems = 0;
 
@@ -67,12 +107,13 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
 
   if (elementos.length > 0) {
     elementos.forEach((item: any) => {
-      sumaBasePura += item.subtotal;
+      // Se absorbe la inflación en el precio base para mostrarlo como un todo
+      const precioBase = item.subtotal * (1 + (inflacion / 100));
+      sumaBaseTotal += precioBase;
       
-      const precioBaseInflado = item.subtotal * (1 + (inflacion / 100));
       const descuentoPrc = item.descuento || 0;
-      const montoDescuentoItem = precioBaseInflado * (descuentoPrc / 100);
-      const precioConDescuento = precioBaseInflado - montoDescuentoItem;
+      const montoDescuentoItem = precioBase * (descuentoPrc / 100);
+      const precioConDescuento = precioBase - montoDescuentoItem;
 
       sumaTotalConDescuentoItems += precioConDescuento;
       sumaAhorroItems += montoDescuentoItem;
@@ -89,26 +130,25 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
         item.nombre,
         item.cantidad || 1,
         item.tiendas?.length || '-',
-        `$${precioBaseInflado.toLocaleString('es-AR', {maximumFractionDigits: 2})}`,
+        `$${precioBase.toLocaleString('es-AR', {maximumFractionDigits: 2})}`,
         strDescuento,
         strAhorro
       ]);
     });
   } else {
-    // Fallback de seguridad
-    sumaBasePura = deal.amount;
-    if (descuentoGlobal > 0) sumaBasePura = sumaBasePura / (1 - (descuentoGlobal / 100));
-    if (inflacion > 0) sumaBasePura = sumaBasePura / (1 + (inflacion / 100));
-    
-    const baseInfladaFb = sumaBasePura * (1 + (inflacion / 100));
+    // Fallback de seguridad calculando desde el monto final
+    let precioBase = deal.amount;
+    if (descuentoGlobal > 0) precioBase = precioBase / (1 - (descuentoGlobal / 100));
+    // Ya no restamos la inflación visiblemente, asumimos que está en el precioBase
+    sumaBaseTotal = precioBase;
     
     tableRows.push([
       deal.catalogo?.elemento || "Campaña Única", "1", deal.tiendas?.length || "-",
-      `$${baseInfladaFb.toLocaleString('es-AR', {maximumFractionDigits: 2})}`,
-      `$${baseInfladaFb.toLocaleString('es-AR', {maximumFractionDigits: 2})}`, "-"
+      `$${precioBase.toLocaleString('es-AR', {maximumFractionDigits: 2})}`,
+      `$${precioBase.toLocaleString('es-AR', {maximumFractionDigits: 2})}`, "-"
     ]);
     
-    sumaTotalConDescuentoItems = baseInfladaFb;
+    sumaTotalConDescuentoItems = precioBase;
   }
 
   // Fila de Total de Items
@@ -139,20 +179,15 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   const finalY = (doc as any).lastAutoTable.finalY + 10;
   let resumenY = finalY;
 
-  const montoInflacion = sumaBasePura * (inflacion / 100);
   const montoDescuentoGlobal = sumaTotalConDescuentoItems * (descuentoGlobal / 100);
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   
-  doc.text(`Suma Base Pura (Sin ajustes):`, 14, resumenY);
-  doc.text(`$ ${sumaBasePura.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 150, resumenY, { align: 'right' });
+  doc.text(`Suma Base Total:`, 14, resumenY);
+  doc.text(`$ ${sumaBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 150, resumenY, { align: 'right' });
   
-  if (inflacion > 0) {
-    resumenY += 6;
-    doc.text(`Tasa de Actualización (Inflación) - ${inflacion}%:`, 14, resumenY);
-    doc.text(`+$ ${montoInflacion.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 150, resumenY, { align: 'right' });
-  }
+  // (Línea de inflación eliminada a pedido)
 
   if (sumaAhorroItems > 0) {
     resumenY += 6;
@@ -172,31 +207,14 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   doc.text(`MONTO TOTAL FINAL (Sin IVA):`, 14, resumenY); 
   doc.text(`$ ${deal.amount.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 150, resumenY, { align: 'right' }); 
   
-  // --- CIERRE Y FIRMAS ---
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  resumenY += 15;
-  const textoCierre = `Esta propuesta es irrevocable y se considerará aceptada con la recepción y posterior aceptación de la primera Factura o Nota de débito emitida por INC S.A. conforme a lo aquí dispuesto.`; 
-  const splitCierre = doc.splitTextToSize(textoCierre, 180);
-  doc.text(splitCierre, 14, resumenY);
-
-  resumenY += (splitCierre.length * 5) + 15;
-  doc.text(`Firma por parte de INC S.A.: ___________________________`, 14, resumenY); 
-  
-  resumenY += 15;
-  const aceptacion = `Por la presente, acuso recibo de la propuesta de servicios de INC S.A. con fecha ${fechaActual}, aceptando la misma.`; 
-  const splitAceptacion = doc.splitTextToSize(aceptacion, 180);
-  doc.text(splitAceptacion, 14, resumenY);
-  
-  resumenY += 15;
-  doc.text(`Firma ${nombreCliente}: ___________________________`, 14, resumenY);
-
-  // --- HOJA DE ADJUNTOS ---
+  // ==========================================
+  // --- ANEXO II: HOJA DE ADJUNTOS / RENDERS ---
+  // ==========================================
   if (deal.adjuntos && deal.adjuntos.length > 0) {
     doc.addPage();
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("Anexo: Renders y Documentos Adjuntos", 14, 20);
+    doc.text("Anexo II: Renders y Documentos Adjuntos", 14, 20);
     
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
