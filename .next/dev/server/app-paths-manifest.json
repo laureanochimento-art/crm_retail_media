@@ -1,0 +1,7 @@
+{
+  "/clientes/page": "app/clientes/page.js",
+  "/cotizador/page": "app/cotizador/page.js",
+  "/crm/page": "app/crm/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js"
+}

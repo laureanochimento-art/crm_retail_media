@@ -1,0 +1,12 @@
+{
+  "app": {
+    "[project]/app/clientes/page": [],
+    "[project]/app/cotizador/page": [],
+    "[project]/app/crm/page": [],
+    "[project]/app/login/page": [],
+    "[project]/app/page": []
+  },
+  "appUsingSizeAdjust": true,
+  "pages": {},
+  "pagesUsingSizeAdjust": false
+}

@@ -8,7 +8,7 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
-  
+
   // Estados del Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'CREATE' | 'EDIT'>('CREATE');
@@ -85,10 +85,14 @@ export default function ClientesPage() {
     else fetchClientes();
   };
 
-  const clientesFiltrados = clientes.filter(c => 
-    c.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
-    c.cuit.includes(busqueda)
-  );
+  // Lógica del buscador corregida para evitar errores con datos vacíos
+  const clientesFiltrados = clientes.filter(c => {
+    const termino = busqueda.toLowerCase();
+    const nombreValido = c.nombre ? String(c.nombre).toLowerCase() : "";
+    const cuitValido = c.cuit ? String(c.cuit).toLowerCase() : "";
+    
+    return nombreValido.includes(termino) || cuitValido.includes(termino);
+  });
 
   return (
     <div className="w-full h-full flex flex-col gap-6 p-8 overflow-y-auto">
@@ -146,7 +150,7 @@ export default function ClientesPage() {
                         {cliente.es_agencia ? 'Agencia' : 'Directo'}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-400 text-xs">{cliente.contacto_email || '—'}</td>
+                    <td className="p-4 text-slate-400 text-xs">{cliente.contacto_email || '-'}</td>
                     <td className="p-4 text-right space-x-2">
                       <button onClick={() => openEditModal(cliente)} className="text-slate-400 hover:text-cyan-400 transition-colors p-1" title="Editar">
                         <span className="material-symbols-outlined text-sm">edit</span>
@@ -258,7 +262,6 @@ export default function ClientesPage() {
                 {guardando ? 'Guardando...' : 'Guardar Cliente'}
               </button>
             </div>
-
           </div>
         </div>
       )}
