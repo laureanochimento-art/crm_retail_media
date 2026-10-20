@@ -3,7 +3,7 @@
 import { Deal, Usuario } from '../../lib/types';
 import React, { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
-import FormularioAcuerdo from "../../components/FormularioAcuerdo"; // <-- IMPORTAMOS EL NUEVO COMPONENTE
+import FormularioAcuerdo from "../../components/FormularioAcuerdo";
 
 const STAGES = ["OPORTUNIDAD", "COTIZADO", "POR_FACTURAR", "FACTURADO", "PERDIDO"];
 
@@ -11,15 +11,13 @@ export default function CRMPage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
-  
-  // Filtros y Búsqueda
+
   const [filtroCanal, setFiltroCanal] = useState<string>("TODOS");
   const [filtroTipoCliente, setFiltroTipoCliente] = useState<string>("TODOS");
   const [filtroClienteId, setFiltroClienteId] = useState<string>("TODOS");
   const [busquedaGeneral, setBusquedaGeneral] = useState<string>("");
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
-  
-  // Estados para controlar el Modal y nuestro nuevo componente
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'CREATE' | 'EDIT'>('CREATE');
   const [editingDealId, setEditingDealId] = useState<number | null>(null);
@@ -71,14 +69,10 @@ export default function CRMPage() {
   const canEditDeal = (deal: Deal) => {
     if (isJefe) return true;
     const etapasBloqueadas = ["POR_FACTURAR", "FACTURADO", "PERDIDO"];
-    if (etapasBloqueadas.includes(deal.stage)) {
-      return false;
-    }
+    if (etapasBloqueadas.includes(deal.stage)) return false;
     if (isAdministrativo) return true;
     if (isVendedor) {
-      if (!deal.vendedor_id || deal.vendedor_id === currentUser?.id) {
-        return true;
-      }
+      if (!deal.vendedor_id || deal.vendedor_id === currentUser?.id) return true;
     }
     return false;
   };
@@ -135,7 +129,6 @@ export default function CRMPage() {
     if (error) { console.error(error); fetchDeals(); }
   };
 
-  // Funciones para abrir el componente maestro
   const openCreateModal = () => {
     setModalMode('CREATE');
     setEditingDealId(null);
@@ -214,11 +207,31 @@ export default function CRMPage() {
                 {dealsEtapa.map((deal) => {
                   const hasPermission = canEditDeal(deal);
                   return (
-                    <div key={deal.id} draggable={hasPermission} onDragStart={(e) => handleDragStart(e, deal)} className={`bg-slate-800/80 border border-slate-700/80 p-4 rounded-xl shadow-md transition-all relative group ${hasPermission ? 'cursor-grab hover:border-cyan-500/50 hover:scale-[1.01]' : 'opacity-80 cursor-not-allowed'}`}>
+                    <div 
+                      key={deal.id} 
+                      draggable={hasPermission} 
+                      onDragStart={(e) => handleDragStart(e, deal)} 
+                      onClick={() => { if (hasPermission) openEditModal(deal); }}
+                      className={`bg-slate-800/80 border border-slate-700/80 p-4 rounded-xl shadow-md transition-all relative group ${hasPermission ? 'cursor-pointer hover:border-cyan-500/50 hover:scale-[1.01]' : 'opacity-80 cursor-not-allowed'}`}
+                    >
                       {hasPermission && (
                         <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={(e) => { e.stopPropagation(); openEditModal(deal); }} className="text-slate-500 hover:text-cyan-400"><span className="material-symbols-outlined text-sm">edit</span></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteDeal(deal.id); }} className="text-slate-500 hover:text-rose-400"><span className="material-symbols-outlined text-sm">delete</span></button>
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); openEditModal(deal); }} 
+                            className="text-slate-500 hover:text-cyan-400"
+                            title="Editar acuerdo"
+                          >
+                            <span className="material-symbols-outlined text-sm">edit</span>
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteDeal(deal.id); }} 
+                            className="text-slate-500 hover:text-rose-400"
+                            title="Eliminar acuerdo"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
                         </div>
                       )}
                       
@@ -257,7 +270,6 @@ export default function CRMPage() {
         })}
       </div>
 
-      {/* AQUÍ LLAMAMOS AL NUEVO COMPONENTE MAESTRO */}
       {isModalOpen && (
         <FormularioAcuerdo 
           origen="CRM"
@@ -270,7 +282,7 @@ export default function CRMPage() {
           onGuardadoExitoso={() => {
             setIsModalOpen(false);
             setEditingDealId(null);
-            fetchDeals(); // Recargamos el tablero automáticamente
+            fetchDeals();
           }}
         />
       )}

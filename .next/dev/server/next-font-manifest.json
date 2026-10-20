@@ -1,9 +1,10 @@
 {
   "app": {
-    "[project]/app/clientes/page": [],
+    "[project]/app/catalogo/page": [],
     "[project]/app/cotizador/page": [],
     "[project]/app/crm/page": [],
-    "[project]/app/login/page": [],
+    "[project]/app/dashboard/page": [],
+    "[project]/app/facturacion/page": [],
     "[project]/app/page": []
   },
   "appUsingSizeAdjust": true,

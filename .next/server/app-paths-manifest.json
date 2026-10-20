@@ -1,4 +1,5 @@
 {
+  "/_global-error/page": "app/_global-error/page.js",
   "/_not-found/page": "app/_not-found/page.js",
   "/api/enviar-acuerdo/route": "app/api/enviar-acuerdo/route.js",
   "/api/usuarios/route": "app/api/usuarios/route.js",
@@ -9,7 +10,7 @@
   "/dashboard/page": "app/dashboard/page.js",
   "/facturacion/page": "app/facturacion/page.js",
   "/login/page": "app/login/page.js",
-  "/perfil/page": "app/perfil/page.js",
   "/page": "app/page.js",
+  "/perfil/page": "app/perfil/page.js",
   "/usuarios/page": "app/usuarios/page.js"
 }

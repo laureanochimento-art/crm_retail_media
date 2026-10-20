@@ -5,8 +5,6 @@ export interface Cliente {
   es_agencia: boolean;
   numero_cliente?: string;
   contacto_email?: string;
-  
-  // NUEVOS CAMPOS PARA EL CONTRATO PDF
   direccion?: string;
   telefono?: string;
   rep_nombre?: string;
@@ -14,7 +12,6 @@ export interface Cliente {
   rep_cargo?: string;
   sector?: string;
   secciones?: string;
-  
   created_at?: string;
 }
 
@@ -32,7 +29,7 @@ export interface CatalogoItem {
   elemento: string;
   canal: 'Digital' | 'InStore' | 'Omnicanal';
   precio_base: number;
-  periodo?: string; // <--- ¡AGREGA ESTA LÍNEA!
+  periodo?: string;
   created_at?: string;
 }
 
@@ -45,14 +42,12 @@ export interface Usuario {
   created_at?: string;
 }
 
-// NUEVO: INTERFAZ PARA ADJUNTOS
 export interface Adjunto {
   id: string;
   nombre: string;
   url: string;
-  tipo: string; 
+  tipo: string;
   tamaño?: number;
-  // --- LÍNEA MODIFICADA ---
   categoria?: 'DISEÑO' | 'DISEÑO_DESKTOP' | 'DISEÑO_MOBILE' | 'EAN' | 'RENDER' | 'GENERAL';
   elemento_nombre?: string;
   catalogo_id?: number;
@@ -64,12 +59,20 @@ export interface Deal {
   cliente_id: number;
   auspiciante_id?: number | null;
   catalogo_id: number;
-  vendedor_id?: string | null; 
+  vendedor_id?: string | null;
   amount: number;
   channel: 'Digital' | 'InStore' | 'Omnicanal';
   stage: 'OPORTUNIDAD' | 'COTIZADO' | 'POR_FACTURAR' | 'FACTURADO' | 'PERDIDO';
-  descuento_porcentaje: number;
-  tasa_inflacion?: number; // <--- NUEVO CAMPO
+  
+  // Descuentos y sobreprecios
+  descuento_global_tipo?: '%' | '$';
+  descuento_global_valor?: number;
+  descuento_porcentaje?: number;
+  
+  // Inflación mensual
+  tasa_inflacion?: number;
+  inflacion_mensual?: any[];
+
   fecha_desde?: string | null;
   fecha_hasta?: string | null;
   created_at?: string;
@@ -80,6 +83,6 @@ export interface Deal {
   marca_auspiciante?: Cliente;
   catalogo?: CatalogoItem;
   tiendas?: Tienda[];
-  vendedor?: Usuario; 
+  vendedor?: Usuario;
   elementos_json?: any[];
 }

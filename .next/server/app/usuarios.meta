@@ -1,0 +1,34 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/usuarios/layout,_N_T_/usuarios/page,_N_T_/usuarios"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/usuarios/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 160,
+            "slots": null
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/9461ca0d8d379289954585041e8f60c06d966f0126ffabbb2e5fbb68039cb84f/$/usuarios",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/usuarios/page"
+    },
+    "isFallback": false
+  }
+}

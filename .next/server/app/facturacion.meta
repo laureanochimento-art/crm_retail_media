@@ -1,0 +1,34 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/facturacion/layout,_N_T_/facturacion/page,_N_T_/facturacion"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/facturacion/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 160,
+            "slots": null
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/3268b909090db239f8a5331ef4a34dc99f1bf953c4611dc3945c682131bb3618/$/facturacion",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/facturacion/page"
+    },
+    "isFallback": false
+  }
+}
