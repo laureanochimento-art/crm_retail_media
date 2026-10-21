@@ -1,8 +1,0 @@
-{
-  "/catalogo/page": "app/catalogo/page.js",
-  "/cotizador/page": "app/cotizador/page.js",
-  "/crm/page": "app/crm/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/facturacion/page": "app/facturacion/page.js",
-  "/page": "app/page.js"
-}

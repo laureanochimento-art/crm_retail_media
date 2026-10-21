@@ -16,9 +16,12 @@ export interface MesProrrateado {
 export const obtenerMesesRango = (desdeStr: string, hastaStr: string): string[] => {
   const meses: string[] = [];
   if (!desdeStr || !hastaStr) return meses;
-  const inicio = new Date(`${desdeStr}T00:00:00`);
-  const fin = new Date(`${hastaStr}T00:00:00`);
-  if (isNaN(inicio.getTime()) || isNaN(fin.getTime()) || fin < inicio) return meses;
+  const rawInicio = new Date(`${desdeStr}T00:00:00`);
+  const rawFin = new Date(`${hastaStr}T00:00:00`);
+  if (isNaN(rawInicio.getTime()) || isNaN(rawFin.getTime())) return meses;
+
+  const inicio = rawInicio <= rawFin ? rawInicio : rawFin;
+  const fin = rawInicio <= rawFin ? rawFin : rawInicio;
 
   const curr = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
   const finMes = new Date(fin.getFullYear(), fin.getMonth(), 1);
@@ -88,31 +91,30 @@ export const calcularProrrateoDeal = (deal: Deal): MesProrrateado[] => {
     const fHasta = item.fechaHasta || deal.fecha_hasta;
     if (!fDesde || !fHasta) return;
 
-    const inicio = new Date(`${fDesde}T00:00:00`);
-    const fin = new Date(`${fHasta}T00:00:00`);
-    if (isNaN(inicio.getTime()) || isNaN(fin.getTime()) || fin < inicio) return;
+    const d1Raw = new Date(`${fDesde}T00:00:00`);
+    const d2Raw = new Date(`${fHasta}T00:00:00`);
+    if (isNaN(d1Raw.getTime()) || isNaN(d2Raw.getTime())) return;
 
-    const cantTiendas = (item.canal === 'InStore' && item.tiendas && item.tiendas.length > 0) ? item.tiendas.length : 1;
-    const cantUnidades = item.cantidad || 1;
-    const multiplicadorFisico = cantTiendas * cantUnidades;
+    const inicio = d1Raw <= d2Raw ? d1Raw : d2Raw;
+    const fin = d1Raw <= d2Raw ? d2Raw : d1Raw;
+    const diffDias = Math.max(1, Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
-    // Se toma el precio calculado del ítem sin duplicar el multiplicador físico
-    const precioBaseElemento = item.precioLista !== undefined 
-      ? Number(item.precioLista) 
-      : (Number(item.precioUnitario || item.precio_base || 0) * multiplicadorFisico);
+    // Se toma el subtotal neto del elemento
+    const subtotalElemento = item.subtotal !== undefined 
+      ? Number(item.subtotal) 
+      : Number(item.precioLista || 0);
 
     const periodo = item.periodo || 'Mensual';
 
     if (periodo === 'Único' || periodo === 'único' || periodo === 'Unico') {
       const mesInicioKey = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
       if (desgloseMeses[mesInicioKey]) {
-        desgloseMeses[mesInicioKey].montoBase += precioBaseElemento;
-        desgloseMeses[mesInicioKey].diasSet.add(fDesde);
+        desgloseMeses[mesInicioKey].montoBase += subtotalElemento;
+        desgloseMeses[mesInicioKey].diasSet.add(inicio.toISOString().split('T')[0]);
       }
     } else {
-      const tarifaDiaria = periodo === 'Semanal' 
-        ? (precioBaseElemento / 7) 
-        : (precioBaseElemento / 30);
+      // Se prorratea exactamente por los días de duración del acuerdo
+      const tarifaDiaria = subtotalElemento / diffDias;
 
       const curr = new Date(inicio);
       while (curr <= fin) {
@@ -182,9 +184,9 @@ export const calcularProrrateoPorDias = (
         nombre: 'Campaña',
         periodo: 'Mensual',
         precioLista: montoTotal,
+        subtotal: montoTotal,
         fechaDesde: fechaDesdeStr,
-        fechaHasta: fechaHastaStr,
-        subtotal: montoTotal
+        fechaHasta: fechaHastaStr
       }
     ]
   });

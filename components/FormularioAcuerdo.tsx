@@ -1,9 +1,8 @@
 "use client";
-
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import SearchableSelect from "./SearchableSelect";
-import { Deal, Adjunto, Usuario } from '../lib/types';
+import { Deal, Adjunto, Usuario, Tienda } from "../lib/types";
 import { generarAcuerdoPDF } from "../lib/generadorPdf";
 import { obtenerMesesRango, formatearNombreMes } from "../lib/prorrateo";
 
@@ -24,7 +23,7 @@ interface InflacionMesItem {
 export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar, onGuardadoExitoso }: FormularioAcuerdoProps) {
   const [clientes, setClientes] = useState<any[]>([]);
   const [catalogo, setCatalogo] = useState<any[]>([]);
-  const [tiendas, setTiendas] = useState<any[]>([]);
+  const [tiendas, setTiendas] = useState<Tienda[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
 
@@ -36,7 +35,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   const [auspicianteSeleccionado, setAuspicianteSeleccionado] = useState("");
   const [esReclasificado, setEsReclasificado] = useState(false);
   const [elementosAcuerdo, setElementosAcuerdo] = useState<any[]>([]);
-  
+
   // Descuento Global
   const [descuentoGlobalTipo, setDescuentoGlobalTipo] = useState<'%' | '$'>('%');
   const [descuentoGlobalValor, setDescuentoGlobalValor] = useState(0);
@@ -61,6 +60,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   const [sobreprecioValor, setSobreprecioValor] = useState(0);
   const [descuentoItemTipo, setDescuentoItemTipo] = useState<'%' | '$'>('%');
   const [descuentoItemValor, setDescuentoItemValor] = useState(0);
+
+  // Archivos Adjuntos del Ítem Actual
   const [adjuntosItemActual, setAdjuntosItemActual] = useState<Adjunto[]>([]);
 
   // Procesos
@@ -88,12 +89,16 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         if (modo === 'CREATE') setVendedorSeleccionado(data.id.toString());
       }
     }
+
     const { data: dataClientes } = await supabase.from('clientes').select('*');
     if (dataClientes) setClientes(dataClientes);
+
     const { data: dataCatalogo } = await supabase.from('catalogo').select('*');
     if (dataCatalogo) setCatalogo(dataCatalogo);
+
     const { data: dataTiendas } = await supabase.from('tiendas').select('*').order('numero', { ascending: true });
-    if (dataTiendas) setTiendas(dataTiendas);
+    if (dataTiendas) setTiendas(dataTiendas as Tienda[]);
+
     const { data: dataUsuarios } = await supabase.from('usuarios').select('*');
     if (dataUsuarios) setUsuarios(dataUsuarios);
   };
@@ -106,11 +111,11 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     setEsAgencia(clienteObj?.es_agencia || false);
     setAuspicianteSeleccionado(deal.auspiciante_id ? deal.auspiciante_id.toString() : "");
     setEsReclasificado(deal.es_reclasificado || false);
-    
+
     setDescuentoGlobalTipo(deal.descuento_global_tipo || '%');
     setDescuentoGlobalValor(deal.descuento_global_valor ?? (deal.descuento_porcentaje || 0));
-    setInflacionGlobalPromedio(deal.tasa_inflacion || 0);
 
+    setInflacionGlobalPromedio(deal.tasa_inflacion || 0);
     const infGuardada = (deal as any).inflacion_mensual || [];
     if (Array.isArray(infGuardada) && infGuardada.length > 0) {
       const mapa: Record<string, number> = {};
@@ -129,27 +134,94 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     }
   };
 
+  const handleSubirArchivo = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    categoria: Adjunto['categoria'],
+    esMultiple: boolean = false
+  ) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setSubiendoArchivo(true);
+    try {
+      const nuevos: Adjunto[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filePath = `deals/${Date.now()}_${cleanName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('adjuntos')
+          .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('adjuntos')
+          .getPublicUrl(filePath);
+
+        nuevos.push({
+          id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+          nombre: file.name,
+          url: publicUrl,
+          tipo: file.type || 'application/octet-stream',
+          tamaño: file.size,
+          categoria
+        });
+      }
+
+      if (esMultiple) {
+        setAdjuntosItemActual(prev => [...prev, ...nuevos]);
+      } else {
+        setAdjuntosItemActual(prev => [
+          ...prev.filter(a => a.categoria !== categoria),
+          ...nuevos
+        ]);
+      }
+    } catch (err: any) {
+      console.error("Error al subir archivo:", err);
+      alert(`Error al subir: ${err.message || err}`);
+    } finally {
+      setSubiendoArchivo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleEliminarAdjunto = (idAdjunto: string) => {
+    setAdjuntosItemActual(prev => prev.filter(a => a.id !== idAdjunto));
+  };
+
+  const adjuntoDesktop = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_DESKTOP');
+  const adjuntoMobile = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_MOBILE');
+  const adjuntoEAN = adjuntosItemActual.find(a => a.categoria === 'EAN');
+  const adjuntosRenders = adjuntosItemActual.filter(a => a.categoria === 'RENDER');
+
   const obtenerListaElementosConsolidada = () => {
     let lista = [...elementosAcuerdo];
+
     if (idItemEnEdicion && elementoSeleccionado) {
       const itemCat = catalogo.find(c => c.id.toString() === elementoSeleccionado);
       if (itemCat && itemFechaDesde && itemFechaHasta) {
-        const d1 = new Date(`${itemFechaDesde}T00:00:00`);
-        const d2 = new Date(`${itemFechaHasta}T00:00:00`);
+        const rawD1 = new Date(`${itemFechaDesde}T00:00:00`);
+        const rawD2 = new Date(`${itemFechaHasta}T00:00:00`);
+        const d1 = rawD1 <= rawD2 ? rawD1 : rawD2;
+        const d2 = rawD1 <= rawD2 ? rawD2 : rawD1;
         const diffDays = Math.max(1, Math.ceil(Math.abs(d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
         const periodo = itemCat.periodo || 'Mensual';
         let multiplicadorTiempo = 1;
-        let labelPeriodo = 'Campaña Única';
+
         if (periodo === 'Semanal') {
           multiplicadorTiempo = diffDays / 7;
-          labelPeriodo = `${diffDays} día(s) (Semanal)`;
         } else if (periodo === 'Mensual') {
           multiplicadorTiempo = diffDays / 30;
-          labelPeriodo = `${diffDays} día(s) (Base 30)`;
         }
+
         const cantTiendas = canal === 'InStore' ? (tiendasSeleccionadas.length || 1) : 1;
         const cantUnidades = canal === 'InStore' ? (cantidad || 1) : 1;
         const subtotalOriginal = itemCat.precio_base * multiplicadorTiempo * cantTiendas * cantUnidades;
+
         const montoSobreprecio = sobreprecioTipo === '%' ? subtotalOriginal * (sobreprecioValor / 100) : sobreprecioValor;
         const precioLista = subtotalOriginal + montoSobreprecio;
         const montoDescuento = descuentoItemTipo === '%' ? precioLista * (descuentoItemValor / 100) : descuentoItemValor;
@@ -161,8 +233,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
           nombre: itemCat.elemento,
           canal,
           periodo,
-          fechaDesde: itemFechaDesde,
-          fechaHasta: itemFechaHasta,
+          fechaDesde: itemFechaDesde <= itemFechaHasta ? itemFechaDesde : itemFechaHasta,
+          fechaHasta: itemFechaDesde <= itemFechaHasta ? itemFechaHasta : itemFechaDesde,
           diasActivos: diffDays,
           tiendas: tiendasSeleccionadas,
           cantidad: cantUnidades,
@@ -176,6 +248,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
           subtotal,
           adjuntos: adjuntosItemActual
         };
+
         lista = lista.map(i => i.idUnico === idItemEnEdicion ? itemActualizado : i);
       }
     }
@@ -189,8 +262,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
     const fMin = fechas.reduce((min, cur) => cur < min ? cur : min);
     const fMax = fechas.reduce((max, cur) => cur > max ? cur : max);
-    const claves = obtenerMesesRango(fMin, fMax);
 
+    const claves = obtenerMesesRango(fMin, fMax);
     return claves.map((mesClave, idx) => ({
       mesClave,
       nombre: formatearNombreMes(mesClave),
@@ -272,28 +345,21 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     const itemCatalogo = catalogo.find(c => c.id.toString() === elementoSeleccionado);
     if (!itemCatalogo) return;
 
-    const d1 = new Date(`${itemFechaDesde}T00:00:00`);
-    const d2 = new Date(`${itemFechaHasta}T00:00:00`);
-    if (d2 < d1) {
-      alert("La fecha Hasta no puede ser anterior a la fecha Desde.");
-      return;
-    }
+    const rawD1 = new Date(`${itemFechaDesde}T00:00:00`);
+    const rawD2 = new Date(`${itemFechaHasta}T00:00:00`);
+    const d1 = rawD1 <= rawD2 ? rawD1 : rawD2;
+    const d2 = rawD1 <= rawD2 ? rawD2 : rawD1;
 
-    const diffDays = Math.ceil(Math.abs(d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const diffDays = Math.max(1, Math.ceil(Math.abs(d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     const periodo = itemCatalogo.periodo || 'Mensual';
-
     let multiplicadorTiempo = 1;
-    let labelPeriodo = 'Campaña Única';
 
     if (periodo === 'Semanal') {
       multiplicadorTiempo = diffDays / 7;
-      labelPeriodo = `${diffDays} día(s) (Semanal)`;
     } else if (periodo === 'Mensual') {
       multiplicadorTiempo = diffDays / 30;
-      labelPeriodo = `${diffDays} día(s) (Base 30)`;
     } else {
       multiplicadorTiempo = 1;
-      labelPeriodo = 'Campaña Única (Fijo)';
     }
 
     const multiplicadorTiendas = canal === 'InStore' ? tiendasSeleccionadas.length : 1;
@@ -302,15 +368,20 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
     const subtotalOriginal = itemCatalogo.precio_base * multiplicadorTiempo * multiplicadorVolumen;
 
-    const montoSobreprecio = sobreprecioTipo === '%' 
-      ? subtotalOriginal * (sobreprecioValor / 100) 
+    const montoSobreprecio = sobreprecioTipo === '%'
+      ? subtotalOriginal * (sobreprecioValor / 100)
       : sobreprecioValor;
+
     const precioLista = subtotalOriginal + montoSobreprecio;
 
-    const montoDescuento = descuentoItemTipo === '%' 
-      ? precioLista * (descuentoItemValor / 100) 
+    const montoDescuento = descuentoItemTipo === '%'
+      ? precioLista * (descuentoItemValor / 100)
       : descuentoItemValor;
+
     const subtotal = Math.max(0, precioLista - montoDescuento);
+
+    const fFinalDesde = itemFechaDesde <= itemFechaHasta ? itemFechaDesde : itemFechaHasta;
+    const fFinalHasta = itemFechaDesde <= itemFechaHasta ? itemFechaHasta : itemFechaDesde;
 
     const itemDatos = {
       idUnico: idItemEnEdicion || Date.now(),
@@ -318,8 +389,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       nombre: itemCatalogo.elemento,
       canal: canal,
       periodo: periodo,
-      fechaDesde: itemFechaDesde,
-      fechaHasta: itemFechaHasta,
+      fechaDesde: fFinalDesde,
+      fechaHasta: fFinalHasta,
       diasActivos: diffDays,
       tiendas: tiendasSeleccionadas,
       cantidad: multiplicadorCantidad,
@@ -339,7 +410,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     } else {
       setElementosAcuerdo([...elementosAcuerdo, itemDatos]);
     }
-
     limpiarFormularioItem();
   };
 
@@ -351,6 +421,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   const factoresCompuestosGlobales = useMemo(() => {
     const mapa: Record<string, number> = {};
     let factor = 1.0;
+
     listaMesesCampana.forEach((m, idx) => {
       if (idx === 0) {
         mapa[m.mesClave] = 1.0;
@@ -360,6 +431,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         mapa[m.mesClave] = factor;
       }
     });
+
     return mapa;
   }, [listaMesesCampana, tasasPorMes, inflacionGlobalPromedio]);
 
@@ -369,25 +441,32 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
   const totalConInflacion = useMemo(() => {
     if (listaConsolidada.length === 0) return 0;
+
     let suma = 0;
+
     listaConsolidada.forEach(item => {
       const periodo = item.periodo || 'Mensual';
       const fDesde = item.fechaDesde;
       const fHasta = item.fechaHasta;
+
       if (!fDesde || !fHasta) {
         suma += item.subtotal;
         return;
       }
-      const inicio = new Date(`${fDesde}T00:00:00`);
-      const fin = new Date(`${fHasta}T00:00:00`);
 
-      if (periodo === 'Único' || periodo === 'único') {
+      const rawD1 = new Date(`${fDesde}T00:00:00`);
+      const rawD2 = new Date(`${fHasta}T00:00:00`);
+      const inicio = rawD1 <= rawD2 ? rawD1 : rawD2;
+      const fin = rawD1 <= rawD2 ? rawD2 : rawD1;
+
+      if (periodo === 'Único' || periodo === 'unico' || periodo === 'Unico') {
         const mesInicio = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
         const fact = factoresCompuestosGlobales[mesInicio] || 1.0;
         suma += item.subtotal * fact;
       } else {
         const dias = item.diasActivos || 1;
         const tarifaDiaria = item.subtotal / dias;
+
         const curr = new Date(inicio);
         while (curr <= fin) {
           const keyMes = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}`;
@@ -397,31 +476,32 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         }
       }
     });
+
     return suma;
   }, [listaConsolidada, factoresCompuestosGlobales]);
 
   const subtotalPuroSinInflacion = listaConsolidada.reduce((acc, i) => acc + i.subtotal, 0);
   const montoImpactoInflacion = Math.max(0, totalConInflacion - subtotalPuroSinInflacion);
 
-  const montoDescuentoGlobal = descuentoGlobalTipo === '%' 
-    ? totalConInflacion * (descuentoGlobalValor / 100) 
+  const montoDescuentoGlobal = descuentoGlobalTipo === '%'
+    ? totalConInflacion * (descuentoGlobalValor / 100)
     : descuentoGlobalValor;
 
   const totalFinal = Math.max(0, totalConInflacion - montoDescuentoGlobal);
 
   const armarObjetoDealPreliminar = (listaFinal: any[]) => {
     const clienteObj = clientes.find(c => c.id.toString() === clienteSeleccionado) || dealAEditar?.cliente;
-    
+
     const todasFechasMillis = listaFinal.flatMap(i => [
       i.fechaDesde ? new Date(`${i.fechaDesde}T12:00:00Z`).getTime() : null,
       i.fechaHasta ? new Date(`${i.fechaHasta}T12:00:00Z`).getTime() : null
     ]).filter((t): t is number => t !== null && !isNaN(t));
 
-    const fechaMinima = todasFechasMillis.length > 0 
+    const fechaMinima = todasFechasMillis.length > 0
       ? new Date(Math.min(...todasFechasMillis)).toISOString().split('T')[0]
       : (dealAEditar?.fecha_desde || new Date().toISOString().split('T')[0]);
 
-    const fechaMaxima = todasFechasMillis.length > 0 
+    const fechaMaxima = todasFechasMillis.length > 0
       ? new Date(Math.max(...todasFechasMillis)).toISOString().split('T')[0]
       : (dealAEditar?.fecha_hasta || new Date().toISOString().split('T')[0]);
 
@@ -457,6 +537,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       inflacion_mensual: arrayInflacionMensual,
       fecha_desde: fechaMinima,
       fecha_hasta: fechaMaxima,
+      tiendas: tiendas, // Se envía el catálogo completo de tiendas para el Anexo II
       adjuntos: elementosProcesados.flatMap(i => i.adjuntos || []),
       elementos_json: elementosProcesados,
       es_reclasificado: esReclasificado,
@@ -472,6 +553,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       alert("Agrega al menos un elemento para descargar el borrador en PDF.");
       return;
     }
+
     setGenerandoPdf(true);
     try {
       const { dealPreliminar } = armarObjetoDealPreliminar(listaFinal);
@@ -494,7 +576,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     const { dealPreliminar, clienteObj } = armarObjetoDealPreliminar(listaFinal);
     const emailSugerido = clienteObj?.contacto_email || dealAEditar?.cliente?.contacto_email || "";
     const emailDestino = window.prompt("Ingresa el correo del destinatario:", emailSugerido);
-    
+
     if (!emailDestino || emailDestino.trim() === "") return;
 
     setEnviandoCorreo(true);
@@ -503,6 +585,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       if (!resultadoPdf) throw new Error("No se pudo generar el PDF para el envío.");
 
       const { pdfBase64, nombreArchivo } = resultadoPdf;
+
       const nombreVendedor = currentUser?.nombre || 'Equipo Comercial';
       const emailVendedor = currentUser?.email || 'ar_carrefourmedia@carrefour.com';
       const tituloAcuerdo = dealPreliminar.titulo || 'Propuesta Comercial';
@@ -542,6 +625,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       alert("Faltan datos obligatorios o elementos para guardar el acuerdo.");
       return;
     }
+
     setGuardando(true);
     try {
       const todasFechasMillis = listaFinal.flatMap(i => [
@@ -549,11 +633,11 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         i.fechaHasta ? new Date(`${i.fechaHasta}T12:00:00Z`).getTime() : null
       ]).filter((t): t is number => t !== null && !isNaN(t));
 
-      const fechaMinima = todasFechasMillis.length > 0 
+      const fechaMinima = todasFechasMillis.length > 0
         ? new Date(Math.min(...todasFechasMillis)).toISOString().split('T')[0]
         : (dealAEditar?.fecha_desde || new Date().toISOString().split('T')[0]);
 
-      const fechaMaxima = todasFechasMillis.length > 0 
+      const fechaMaxima = todasFechasMillis.length > 0
         ? new Date(Math.max(...todasFechasMillis)).toISOString().split('T')[0]
         : (dealAEditar?.fecha_hasta || new Date().toISOString().split('T')[0]);
 
@@ -572,7 +656,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         };
       });
 
-      const todosLosAdjuntos = elementosProcesados.flatMap(item => 
+      const todosLosAdjuntos = elementosProcesados.flatMap(item =>
         (item.adjuntos || []).map((adj: Adjunto) => ({
           ...adj,
           catalogo_id: item.catalogoId,
@@ -586,8 +670,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         tasa: m.tasa
       }));
 
-      const stageToSave = modo === 'EDIT' 
-        ? (dealAEditar?.stage || 'OPORTUNIDAD') 
+      const stageToSave = modo === 'EDIT'
+        ? (dealAEditar?.stage || 'OPORTUNIDAD')
         : (origen === 'CRM' ? 'OPORTUNIDAD' : 'COTIZADO');
 
       const dealData = {
@@ -612,6 +696,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       };
 
       let dealIdToUse = modo === 'EDIT' ? dealAEditar?.id : null;
+
       if (modo === 'CREATE') {
         const { data, error } = await supabase.from('deals').insert([dealData]).select().single();
         if (error) throw error;
@@ -619,6 +704,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       } else {
         const { error } = await supabase.from('deals').update(dealData).eq('id', dealIdToUse);
         if (error) throw error;
+
         await supabase.from('deal_tiendas').delete().eq('deal_id', dealIdToUse);
       }
 
@@ -645,9 +731,9 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   };
 
   const opcionesClientes = clientes.map(c => ({ id: c.id, label: c.nombre }));
-  const opcionesCatalogo = catalogo.filter(c => c.canal === canal).map(c => ({ 
-    id: c.id, 
-    label: `${c.elemento} ($${c.precio_base.toLocaleString()}) - ${c.periodo || 'Mensual'}` 
+  const opcionesCatalogo = catalogo.filter(c => c.canal === canal).map(c => ({
+    id: c.id,
+    label: `${c.elemento} ($${c.precio_base.toLocaleString()}) - ${c.periodo || 'Mensual'}`
   }));
 
   const FormularioContent = (
@@ -656,7 +742,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         <h3 className="font-semibold text-xl text-white">{modo === 'CREATE' ? 'Nueva Cotización' : 'Editar Acuerdo'}</h3>
         {origen === 'CRM' && <button onClick={onCerrar} className="text-slate-400 hover:text-white"><span className="material-symbols-outlined">close</span></button>}
       </div>
-      
+
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 border-r border-white/10 space-y-6">
           {/* Bloque 1: Datos */}
@@ -677,6 +763,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   </div>
                 )}
               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Cliente / Agencia *</label>
@@ -685,7 +772,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                 {esAgencia && (
                   <div>
                     <label className="text-xs font-semibold text-cyan-400 block mb-1">Anunciante Final</label>
-                    <SearchableSelect options={clientes.filter(c => !c.es_agencia).map(c => ({id: c.id, label: c.nombre}))} value={auspicianteSeleccionado} onChange={setAuspicianteSeleccionado} placeholder="Marca..." />
+                    <SearchableSelect options={clientes.filter(c => !c.es_agencia).map(c => ({ id: c.id, label: c.nombre }))} value={auspicianteSeleccionado} onChange={setAuspicianteSeleccionado} placeholder="Marca..." />
                   </div>
                 )}
               </div>
@@ -705,22 +792,35 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 space-y-4">
               <div className="flex gap-4">
-                <label className="flex items-center gap-2 text-sm text-white"><input type="radio" checked={canal === 'Digital'} onChange={() => handleCanalChange('Digital')} className="text-cyan-500 bg-slate-900 border-slate-700" /> Digital</label>
-                <label className="flex items-center gap-2 text-sm text-white"><input type="radio" checked={canal === 'InStore'} onChange={() => handleCanalChange('InStore')} className="text-amber-500 bg-slate-900 border-slate-700" /> InStore</label>
+                <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                  <input type="radio" checked={canal === 'Digital'} onChange={() => handleCanalChange('Digital')} className="text-cyan-500 bg-slate-900 border-slate-700" /> Digital
+                </label>
+                <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                  <input type="radio" checked={canal === 'InStore'} onChange={() => handleCanalChange('InStore')} className="text-amber-500 bg-slate-900 border-slate-700" /> InStore
+                </label>
               </div>
 
               <SearchableSelect options={opcionesCatalogo} value={elementoSeleccionado} onChange={setElementoSeleccionado} placeholder={`Buscar espacio ${canal}...`} />
-              
+
               {elementoSeleccionado && (
                 <div className="space-y-4 pt-2">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Desde *</label><input type="date" value={itemFechaDesde} onChange={(e) => setItemFechaDesde(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400" /></div>
-                    <div><label className="text-xs font-semibold text-slate-400 block mb-1">Hasta *</label><input type="date" value={itemFechaHasta} onChange={(e) => setItemFechaHasta(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400" /></div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 block mb-1">Desde *</label>
+                      <input type="date" value={itemFechaDesde} onChange={(e) => setItemFechaDesde(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-400 block mb-1">Hasta *</label>
+                      <input type="date" value={itemFechaHasta} onChange={(e) => setItemFechaHasta(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400" />
+                    </div>
                   </div>
 
                   {canal === 'InStore' && (
                     <div className="grid grid-cols-2 gap-4">
-                      <div><label className="text-xs font-semibold text-slate-400 block mb-1">Cant. por Tienda</label><input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-amber-400" /></div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-400 block mb-1">Cant. por Tienda</label>
+                        <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm focus:border-amber-400" />
+                      </div>
                     </div>
                   )}
 
@@ -748,7 +848,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   </div>
                 </div>
               )}
-              
+
               {canal === 'InStore' && elementoSeleccionado && (
                 <div className="p-3 bg-slate-800/50 rounded border border-slate-700 mt-2">
                   <input type="text" value={busquedaTienda} onChange={(e) => setBusquedaTienda(e.target.value)} placeholder="Buscar tienda InStore..." className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-white mb-2" />
@@ -760,6 +860,151 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* SECCIÓN ADJUNTOS DIGITAL */}
+              {canal === 'Digital' && elementoSeleccionado && (
+                <div className="p-3 bg-slate-900 border border-slate-700 rounded-lg space-y-3 mt-3">
+                  <label className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">attachment</span>
+                    Archivos de Campaña Digital (Opcionales)
+                  </label>
+
+                  <div className="space-y-2">
+                    {/* 1. Pieza Desktop */}
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="material-symbols-outlined text-cyan-400 text-base">desktop_windows</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200">Pieza Desktop</p>
+                          {adjuntoDesktop ? (
+                            <p className="text-[10px] text-slate-400 truncate font-mono">{adjuntoDesktop.nombre}</p>
+                          ) : (
+                            <p className="text-[10px] text-slate-500 italic">No adjuntada</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {adjuntoDesktop && (
+                          <>
+                            <a href={adjuntoDesktop.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-cyan-400 p-1" title="Ver archivo">
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                            </a>
+                            <button type="button" onClick={() => handleEliminarAdjunto(adjuntoDesktop.id)} className="text-slate-400 hover:text-rose-400 p-1" title="Quitar">
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </>
+                        )}
+                        <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
+                          <span>{adjuntoDesktop ? "Reemplazar" : "Subir"}</span>
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'DISEÑO_DESKTOP')} className="hidden" />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* 2. Pieza Mobile */}
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="material-symbols-outlined text-cyan-400 text-base">smartphone</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200">Pieza Mobile</p>
+                          {adjuntoMobile ? (
+                            <p className="text-[10px] text-slate-400 truncate font-mono">{adjuntoMobile.nombre}</p>
+                          ) : (
+                            <p className="text-[10px] text-slate-500 italic">No adjuntada</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {adjuntoMobile && (
+                          <>
+                            <a href={adjuntoMobile.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-cyan-400 p-1" title="Ver archivo">
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                            </a>
+                            <button type="button" onClick={() => handleEliminarAdjunto(adjuntoMobile.id)} className="text-slate-400 hover:text-rose-400 p-1" title="Quitar">
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </>
+                        )}
+                        <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
+                          <span>{adjuntoMobile ? "Reemplazar" : "Subir"}</span>
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'DISEÑO_MOBILE')} className="hidden" />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* 3. Lista de EANs */}
+                    <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="material-symbols-outlined text-emerald-400 text-base">barcode_scanner</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200">Lista de EANs (Productos)</p>
+                          {adjuntoEAN ? (
+                            <p className="text-[10px] text-slate-400 truncate font-mono">{adjuntoEAN.nombre}</p>
+                          ) : (
+                            <p className="text-[10px] text-slate-500 italic">No adjuntada</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {adjuntoEAN && (
+                          <>
+                            <a href={adjuntoEAN.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-cyan-400 p-1" title="Ver archivo">
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                            </a>
+                            <button type="button" onClick={() => handleEliminarAdjunto(adjuntoEAN.id)} className="text-slate-400 hover:text-rose-400 p-1" title="Quitar">
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </>
+                        )}
+                        <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
+                          <span>{adjuntoEAN ? "Reemplazar" : "Subir"}</span>
+                          <input type="file" accept=".xlsx,.xls,.csv,.pdf,image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'EAN')} className="hidden" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SECCIÓN ADJUNTOS INSTORE */}
+              {canal === 'InStore' && elementoSeleccionado && (
+                <div className="p-3 bg-slate-900 border border-slate-700 rounded-lg space-y-3 mt-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm">view_in_ar</span>
+                      Renders de Instalación (Opcionales - Múltiples)
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">{adjuntosRenders.length} render(s)</span>
+                  </div>
+
+                  <label className="flex items-center justify-center gap-2 bg-slate-950 hover:bg-slate-800 border border-dashed border-slate-600 hover:border-amber-400 p-2.5 rounded-lg cursor-pointer transition-all text-xs text-slate-300">
+                    <span className="material-symbols-outlined text-base text-amber-400">add_photo_alternate</span>
+                    <span>{subiendoArchivo ? "Subiendo render..." : "Seleccionar una o más imágenes de renders"}</span>
+                    <input type="file" multiple accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'RENDER', true)} className="hidden" />
+                  </label>
+
+                  {adjuntosRenders.length > 0 && (
+                    <div className="space-y-1.5 pt-1 max-h-36 overflow-y-auto">
+                      {adjuntosRenders.map((adj) => (
+                        <div key={adj.id} className="flex items-center justify-between p-2 bg-slate-950/70 border border-slate-800 rounded text-xs">
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <span className="material-symbols-outlined text-xs text-amber-400">image</span>
+                            <span className="text-slate-200 truncate font-mono text-[11px]">{adj.nombre}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a href={adj.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-cyan-400 p-1" title="Ver render">
+                              <span className="material-symbols-outlined text-xs">visibility</span>
+                            </a>
+                            <button type="button" onClick={() => handleEliminarAdjunto(adj.id)} className="text-slate-400 hover:text-rose-400 p-1" title="Quitar">
+                              <span className="material-symbols-outlined text-xs">close</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -781,31 +1026,21 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         <div className="w-full lg:w-[400px] bg-slate-950 p-6 flex flex-col justify-between border-l border-white/10 overflow-y-auto">
           <div>
             <h3 className="font-semibold text-white mb-4 border-b border-white/10 pb-2">Resumen Cotización</h3>
-            
+
             <div className="max-h-48 overflow-y-auto space-y-2 mb-4">
               {listaConsolidada.map((item) => (
                 <div key={item.idUnico} className={`p-3 rounded border text-sm relative group transition-colors ${idItemEnEdicion === item.idUnico ? 'bg-amber-950/30 border-amber-500/50' : 'bg-slate-800 border-slate-700'}`}>
                   <div className="flex justify-between items-start pr-12">
                     <span className="font-bold text-white text-xs leading-tight">{item.nombre}</span>
-                    <span className="text-cyan-400 font-bold text-xs">${item.subtotal.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                    <span className="text-cyan-400 font-bold text-xs">${item.subtotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">{item.fechaDesde} al {item.fechaHasta} ({item.periodo})</p>
-                  
+
                   <div className="absolute top-2 right-2 flex items-center gap-1">
-                    <button 
-                      type="button" 
-                      onClick={() => handleEditarElemento(item)} 
-                      title="Editar este elemento"
-                      className="p-1 text-slate-400 hover:text-cyan-400 transition-colors"
-                    >
+                    <button type="button" onClick={() => handleEditarElemento(item)} title="Editar este elemento" className="p-1 text-slate-400 hover:text-cyan-400 transition-colors">
                       <span className="material-symbols-outlined text-sm">edit</span>
                     </button>
-                    <button 
-                      type="button" 
-                      onClick={() => eliminarElemento(item.idUnico)} 
-                      title="Eliminar elemento"
-                      className="p-1 text-slate-400 hover:text-rose-400 transition-colors"
-                    >
+                    <button type="button" onClick={() => eliminarElemento(item.idUnico)} title="Eliminar elemento" className="p-1 text-slate-400 hover:text-rose-400 transition-colors">
                       <span className="material-symbols-outlined text-sm">close</span>
                     </button>
                   </div>
@@ -819,25 +1054,23 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   <label className="text-xs font-bold text-amber-400 uppercase">Inflación Compuesta</label>
                   <span className="text-[10px] text-slate-400 font-mono">{listaMesesCampana.length} meses</span>
                 </div>
-
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-xs text-slate-300">Promedio Mensual (%):</span>
-                    <input 
-                      type="number" 
-                      step="0.1" 
-                      value={inflacionGlobalPromedio} 
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={inflacionGlobalPromedio}
                       onChange={(e) => handleInflacionGlobalChange(Number(e.target.value))}
                       className="w-20 bg-slate-950 border border-slate-700 rounded p-1 text-right text-xs text-white focus:border-amber-400"
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={multiplesValoresInflacion} 
+                    <input
+                      type="checkbox"
+                      checked={multiplesValoresInflacion}
                       onChange={(e) => setMultiplesValoresInflacion(e.target.checked)}
                       className="rounded border-slate-600 bg-slate-950 text-amber-500"
                     />
@@ -856,8 +1089,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                           <span className="text-slate-500 font-mono font-bold">0% (Base)</span>
                         ) : (
                           <div className="flex items-center gap-1">
-                            <input 
-                              type="number" 
+                            <input
+                              type="number"
                               step="0.1"
                               value={tasasPorMes[mes.mesClave] !== undefined ? tasasPorMes[mes.mesClave] : inflacionGlobalPromedio}
                               onChange={(e) => handleTasaMesChange(mes.mesClave, Number(e.target.value))}
@@ -873,63 +1106,63 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
               </div>
             )}
           </div>
-          
+
           <div className="space-y-3 pt-3 border-t border-white/10">
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-400">Subtotal Espacios:</span>
-              <span className="text-white font-mono">${subtotalPuroSinInflacion.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+              <span className="text-white font-mono">${subtotalPuroSinInflacion.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </div>
 
             {montoImpactoInflacion > 0 && (
               <div className="flex justify-between items-center text-xs text-amber-400">
                 <span>Impacto Inflación Acumulada:</span>
-                <span className="font-mono">+${montoImpactoInflacion.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                <span className="font-mono">+${montoImpactoInflacion.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </div>
             )}
-            
+
             <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-700">
-               <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Descuento Global</label>
-               <div className="flex">
-                  <select value={descuentoGlobalTipo} onChange={(e) => setDescuentoGlobalTipo(e.target.value as '%' | '$')} className="bg-slate-800 border border-slate-700 rounded-l p-1.5 text-white text-xs focus:outline-none">
-                     <option value="%">%</option>
-                     <option value="$">$</option>
-                  </select>
-                  <input type="number" value={descuentoGlobalValor} onChange={(e) => setDescuentoGlobalValor(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 border-l-0 rounded-r p-1.5 text-white text-xs focus:border-cyan-400 text-right font-mono" />
-               </div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Descuento Global</label>
+              <div className="flex">
+                <select value={descuentoGlobalTipo} onChange={(e) => setDescuentoGlobalTipo(e.target.value as '%' | '$')} className="bg-slate-800 border border-slate-700 rounded-l p-1.5 text-white text-xs focus:outline-none">
+                  <option value="%">%</option>
+                  <option value="$">$</option>
+                </select>
+                <input type="number" value={descuentoGlobalValor} onChange={(e) => setDescuentoGlobalValor(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 border-l-0 rounded-r p-1.5 text-white text-xs focus:border-cyan-400 text-right font-mono" />
+              </div>
             </div>
 
             <div className="flex justify-between items-end bg-cyan-950/30 p-3 rounded-xl border border-cyan-500/50 shadow-lg">
               <span className="text-white font-semibold text-sm">Total Final</span>
-              <span className="text-2xl font-extrabold text-cyan-400">${totalFinal.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+              <span className="text-2xl font-extrabold text-cyan-400">${totalFinal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
             </div>
 
             {/* BOTÓN DESCARGA PRELIMINAR */}
-            <button 
-              type="button" 
-              disabled={generandoPdf || listaConsolidada.length === 0} 
-              onClick={handleDescargarPdfPreliminar} 
-              className="w-full bg-slate-800 border border-cyan-500/40 text-cyan-400 hover:bg-slate-700 font-bold rounded-lg py-2.5 text-sm flex items-center justify-center gap-2 mt-2 transition-colors disabled:opacity-40"
+            <button
+              type="button"
+              disabled={generandoPdf || listaConsolidada.length === 0}
+              onClick={handleDescargarPdfPreliminar}
+              className="w-full bg-slate-800 border border-cyan-500/40 text-cyan-400 hover:bg-slate-700 font-bold rounded-lg py-2.5 text-sm flex items-center justify-center gap-2 mt-2 transition-colors disabled:opacity-40 cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">{generandoPdf ? 'hourglass_empty' : 'picture_as_pdf'}</span>
               {generandoPdf ? 'Generando borrador...' : 'Descargar Contrato PDF (Vista Previa)'}
             </button>
 
             {/* BOTÓN ENVÍO AUTOMÁTICO POR CORREO */}
-            <button 
-              type="button" 
-              disabled={enviandoCorreo || generandoPdf || listaConsolidada.length === 0} 
-              onClick={handleEnviarCorreo} 
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg py-2.5 text-sm flex items-center justify-center gap-2 mt-1 transition-colors disabled:opacity-40 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+            <button
+              type="button"
+              disabled={enviandoCorreo || generandoPdf || listaConsolidada.length === 0}
+              onClick={handleEnviarCorreo}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg py-2.5 text-sm flex items-center justify-center gap-2 mt-1 transition-colors disabled:opacity-40 shadow-[0_0_15px_rgba(99,102,241,0.2)] cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">{enviandoCorreo ? 'hourglass_empty' : 'send'}</span>
               {enviandoCorreo ? 'Enviando acuerdo...' : 'Enviar Acuerdo por Correo'}
             </button>
-            
-            <button 
-              type="button" 
-              onClick={handleSaveDeal} 
-              disabled={guardando} 
-              className="w-full bg-cyan-500 text-slate-900 hover:bg-cyan-400 font-bold rounded-lg py-3 text-sm mt-1 transition-colors disabled:opacity-40"
+
+            <button
+              type="button"
+              onClick={handleSaveDeal}
+              disabled={guardando}
+              className="w-full bg-cyan-500 text-slate-900 hover:bg-cyan-400 font-bold rounded-lg py-3 text-sm mt-1 transition-colors disabled:opacity-40 cursor-pointer"
             >
               {guardando ? "Guardando..." : "Guardar Cotización"}
             </button>
