@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import SearchableSelect from "./SearchableSelect";
@@ -107,6 +108,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     setTitulo(deal.titulo || "");
     setVendedorSeleccionado(deal.vendedor_id ? deal.vendedor_id.toString() : "");
     setClienteSeleccionado(deal.cliente_id ? deal.cliente_id.toString() : "");
+
     const clienteObj = clientes.find(c => c.id === deal.cliente_id);
     setEsAgencia(clienteObj?.es_agencia || false);
     setAuspicianteSeleccionado(deal.auspiciante_id ? deal.auspiciante_id.toString() : "");
@@ -114,8 +116,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
     setDescuentoGlobalTipo(deal.descuento_global_tipo || '%');
     setDescuentoGlobalValor(deal.descuento_global_valor ?? (deal.descuento_porcentaje || 0));
-
     setInflacionGlobalPromedio(deal.tasa_inflacion || 0);
+
     const infGuardada = (deal as any).inflacion_mensual || [];
     if (Array.isArray(infGuardada) && infGuardada.length > 0) {
       const mapa: Record<string, number> = {};
@@ -145,7 +147,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     setSubiendoArchivo(true);
     try {
       const nuevos: Adjunto[] = [];
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -192,14 +193,13 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     setAdjuntosItemActual(prev => prev.filter(a => a.id !== idAdjunto));
   };
 
-  const adjuntoDesktop = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_DESKTOP');
-  const adjuntoMobile = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_MOBILE');
+  const adjuntoDesktop = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_DESKTOP' || (a.categoria as string) === 'DISE O_DESKTOP');
+  const adjuntoMobile = adjuntosItemActual.find(a => a.categoria === 'DISEÑO_MOBILE' || (a.categoria as string) === 'DISE O_MOBILE');
   const adjuntoEAN = adjuntosItemActual.find(a => a.categoria === 'EAN');
   const adjuntosRenders = adjuntosItemActual.filter(a => a.categoria === 'RENDER');
 
   const obtenerListaElementosConsolidada = () => {
     let lista = [...elementosAcuerdo];
-
     if (idItemEnEdicion && elementoSeleccionado) {
       const itemCat = catalogo.find(c => c.id.toString() === elementoSeleccionado);
       if (itemCat && itemFechaDesde && itemFechaHasta) {
@@ -211,7 +211,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
         const periodo = itemCat.periodo || 'Mensual';
         let multiplicadorTiempo = 1;
-
         if (periodo === 'Semanal') {
           multiplicadorTiempo = diffDays / 7;
         } else if (periodo === 'Mensual') {
@@ -220,8 +219,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
         const cantTiendas = canal === 'InStore' ? (tiendasSeleccionadas.length || 1) : 1;
         const cantUnidades = canal === 'InStore' ? (cantidad || 1) : 1;
-        const subtotalOriginal = itemCat.precio_base * multiplicadorTiempo * cantTiendas * cantUnidades;
 
+        const subtotalOriginal = itemCat.precio_base * multiplicadorTiempo * cantTiendas * cantUnidades;
         const montoSobreprecio = sobreprecioTipo === '%' ? subtotalOriginal * (sobreprecioValor / 100) : sobreprecioValor;
         const precioLista = subtotalOriginal + montoSobreprecio;
         const montoDescuento = descuentoItemTipo === '%' ? precioLista * (descuentoItemValor / 100) : descuentoItemValor;
@@ -262,8 +261,8 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
     const fMin = fechas.reduce((min, cur) => cur < min ? cur : min);
     const fMax = fechas.reduce((max, cur) => cur > max ? cur : max);
-
     const claves = obtenerMesesRango(fMin, fMax);
+
     return claves.map((mesClave, idx) => ({
       mesClave,
       nombre: formatearNombreMes(mesClave),
@@ -349,11 +348,10 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     const rawD2 = new Date(`${itemFechaHasta}T00:00:00`);
     const d1 = rawD1 <= rawD2 ? rawD1 : rawD2;
     const d2 = rawD1 <= rawD2 ? rawD2 : rawD1;
-
     const diffDays = Math.max(1, Math.ceil(Math.abs(d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
     const periodo = itemCatalogo.periodo || 'Mensual';
     let multiplicadorTiempo = 1;
-
     if (periodo === 'Semanal') {
       multiplicadorTiempo = diffDays / 7;
     } else if (periodo === 'Mensual') {
@@ -367,13 +365,11 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     const multiplicadorVolumen = multiplicadorTiendas * multiplicadorCantidad;
 
     const subtotalOriginal = itemCatalogo.precio_base * multiplicadorTiempo * multiplicadorVolumen;
-
     const montoSobreprecio = sobreprecioTipo === '%'
       ? subtotalOriginal * (sobreprecioValor / 100)
       : sobreprecioValor;
 
     const precioLista = subtotalOriginal + montoSobreprecio;
-
     const montoDescuento = descuentoItemTipo === '%'
       ? precioLista * (descuentoItemValor / 100)
       : descuentoItemValor;
@@ -410,6 +406,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     } else {
       setElementosAcuerdo([...elementosAcuerdo, itemDatos]);
     }
+
     limpiarFormularioItem();
   };
 
@@ -421,7 +418,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   const factoresCompuestosGlobales = useMemo(() => {
     const mapa: Record<string, number> = {};
     let factor = 1.0;
-
     listaMesesCampana.forEach((m, idx) => {
       if (idx === 0) {
         mapa[m.mesClave] = 1.0;
@@ -431,7 +427,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         mapa[m.mesClave] = factor;
       }
     });
-
     return mapa;
   }, [listaMesesCampana, tasasPorMes, inflacionGlobalPromedio]);
 
@@ -441,14 +436,11 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
   const totalConInflacion = useMemo(() => {
     if (listaConsolidada.length === 0) return 0;
-
     let suma = 0;
-
     listaConsolidada.forEach(item => {
       const periodo = item.periodo || 'Mensual';
       const fDesde = item.fechaDesde;
       const fHasta = item.fechaHasta;
-
       if (!fDesde || !fHasta) {
         suma += item.subtotal;
         return;
@@ -459,14 +451,13 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       const inicio = rawD1 <= rawD2 ? rawD1 : rawD2;
       const fin = rawD1 <= rawD2 ? rawD2 : rawD1;
 
-      if (periodo === 'Único' || periodo === 'unico' || periodo === 'Unico') {
+      if (periodo === 'Único' || periodo === 'unico' || periodo === 'Unico' || periodo === ' nico') {
         const mesInicio = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
         const fact = factoresCompuestosGlobales[mesInicio] || 1.0;
         suma += item.subtotal * fact;
       } else {
         const dias = item.diasActivos || 1;
         const tarifaDiaria = item.subtotal / dias;
-
         const curr = new Date(inicio);
         while (curr <= fin) {
           const keyMes = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}`;
@@ -476,7 +467,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         }
       }
     });
-
     return suma;
   }, [listaConsolidada, factoresCompuestosGlobales]);
 
@@ -537,7 +527,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       inflacion_mensual: arrayInflacionMensual,
       fecha_desde: fechaMinima,
       fecha_hasta: fechaMaxima,
-      tiendas: tiendas, // Se envía el catálogo completo de tiendas para el Anexo II
+      tiendas: tiendas,
       adjuntos: elementosProcesados.flatMap(i => i.adjuntos || []),
       elementos_json: elementosProcesados,
       es_reclasificado: esReclasificado,
@@ -553,7 +543,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       alert("Agrega al menos un elemento para descargar el borrador en PDF.");
       return;
     }
-
     setGenerandoPdf(true);
     try {
       const { dealPreliminar } = armarObjetoDealPreliminar(listaFinal);
@@ -576,7 +565,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     const { dealPreliminar, clienteObj } = armarObjetoDealPreliminar(listaFinal);
     const emailSugerido = clienteObj?.contacto_email || dealAEditar?.cliente?.contacto_email || "";
     const emailDestino = window.prompt("Ingresa el correo del destinatario:", emailSugerido);
-
     if (!emailDestino || emailDestino.trim() === "") return;
 
     setEnviandoCorreo(true);
@@ -585,7 +573,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       if (!resultadoPdf) throw new Error("No se pudo generar el PDF para el envío.");
 
       const { pdfBase64, nombreArchivo } = resultadoPdf;
-
       const nombreVendedor = currentUser?.nombre || 'Equipo Comercial';
       const emailVendedor = currentUser?.email || 'ar_carrefourmedia@carrefour.com';
       const tituloAcuerdo = dealPreliminar.titulo || 'Propuesta Comercial';
@@ -620,7 +607,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
   const handleSaveDeal = async () => {
     const listaFinal = obtenerListaElementosConsolidada();
-
     if (!titulo.trim() || !clienteSeleccionado || listaFinal.length === 0) {
       alert("Faltan datos obligatorios o elementos para guardar el acuerdo.");
       return;
@@ -704,7 +690,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       } else {
         const { error } = await supabase.from('deals').update(dealData).eq('id', dealIdToUse);
         if (error) throw error;
-
         await supabase.from('deal_tiendas').delete().eq('deal_id', dealIdToUse);
       }
 
@@ -776,6 +761,26 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   </div>
                 )}
               </div>
+
+              {/* OPCIÓN DE RECLASIFICACIÓN */}
+              <div className="pt-2">
+                <label className="flex items-center gap-3 cursor-pointer group w-fit p-2.5 bg-slate-950/70 border border-slate-800 hover:border-amber-500/40 rounded-xl transition-all">
+                  <input
+                    type="checkbox"
+                    checked={esReclasificado}
+                    onChange={(e) => setEsReclasificado(e.target.checked)}
+                    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition-colors block">
+                      Marcar este acuerdo como Reclasificación
+                    </span>
+                    <p className="text-[10px] text-slate-500">
+                      Excluye el monto de facturación regular y lo etiqueta en CRM y Dashboard.
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -835,6 +840,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                         <input type="number" value={sobreprecioValor} onChange={(e) => setSobreprecioValor(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 border-l-0 rounded-r p-2 text-white text-sm focus:border-cyan-400" />
                       </div>
                     </div>
+
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Descuento al Ítem</label>
                       <div className="flex">
@@ -870,7 +876,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                     <span className="material-symbols-outlined text-sm">attachment</span>
                     Archivos de Campaña Digital (Opcionales)
                   </label>
-
                   <div className="space-y-2">
                     {/* 1. Pieza Desktop */}
                     <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3">
@@ -898,7 +903,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                         )}
                         <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
                           <span>{adjuntoDesktop ? "Reemplazar" : "Subir"}</span>
-                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'DISEÑO_DESKTOP')} className="hidden" />
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoDesktop?.categoria || 'DISE O_DESKTOP') as any)} className="hidden" />
                         </label>
                       </div>
                     </div>
@@ -929,7 +934,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                         )}
                         <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
                           <span>{adjuntoMobile ? "Reemplazar" : "Subir"}</span>
-                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, 'DISEÑO_MOBILE')} className="hidden" />
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoMobile?.categoria || 'DISE O_MOBILE') as any)} className="hidden" />
                         </label>
                       </div>
                     </div>
@@ -978,7 +983,6 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                     </label>
                     <span className="text-[10px] text-slate-400 font-mono">{adjuntosRenders.length} render(s)</span>
                   </div>
-
                   <label className="flex items-center justify-center gap-2 bg-slate-950 hover:bg-slate-800 border border-dashed border-slate-600 hover:border-amber-400 p-2.5 rounded-lg cursor-pointer transition-all text-xs text-slate-300">
                     <span className="material-symbols-outlined text-base text-amber-400">add_photo_alternate</span>
                     <span>{subiendoArchivo ? "Subiendo render..." : "Seleccionar una o más imágenes de renders"}</span>
@@ -1054,6 +1058,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   <label className="text-xs font-bold text-amber-400 uppercase">Inflación Compuesta</label>
                   <span className="text-[10px] text-slate-400 font-mono">{listaMesesCampana.length} meses</span>
                 </div>
+
                 <div>
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-xs text-slate-300">Promedio Mensual (%):</span>
@@ -1066,6 +1071,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                     />
                   </div>
                 </div>
+
                 <div>
                   <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
                     <input
