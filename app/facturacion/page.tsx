@@ -712,7 +712,7 @@ export default function FacturacionPage() {
       return;
     }
 
-    const dataExcel = [
+    const dataExcel: any[][] = [
       ['Reporte de Comprobantes Emitidos', `Período: ${obtenerNombreMesFormateado(mesCierreSeleccionado)}`],
       ['Fecha de Descarga:', new Date().toLocaleDateString('es-AR')],
       [],
