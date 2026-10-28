@@ -4,6 +4,7 @@ import { Deal } from '../../lib/types';
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import { calcularProrrateoPorDias } from "../../lib/prorrateo";
+import MultiSelect, { MultiSelectOption } from "../../components/MultiSelect";
 import * as XLSX from 'xlsx';
 
 interface MovimientoFactura {
@@ -15,7 +16,7 @@ interface MovimientoFactura {
   periodo_mes: string;
   monto: number;
   fecha_facturacion: string;
-  estado: string; // 'EMITIDA' | 'ANULADA'
+  estado: string;
   observaciones: string | null;
 }
 
@@ -27,11 +28,11 @@ interface ItemCierreMes {
   montoTotalAcuerdo: number;
   montoFacturadoActual: number;
   montoPendienteGlobal: number;
-  montoProrrateadoMes: number;      // El teórico (100% de la porción del mes)
-  montoYaFacturadoEnMes: number;    // Lo que ya se facturó previamente en ese mes
-  saldoSugeridoMes: number;         // Saldo pendiente por cubrir del período
-  montoAFacturarEditado: number;    // Monto a emitir ahora
-  leyendaEditada: string;           // Leyenda SAP editable
+  montoProrrateadoMes: number;
+  montoYaFacturadoEnMes: number;
+  saldoSugeridoMes: number;
+  montoAFacturarEditado: number;
+  leyendaEditada: string;
   seleccionado: boolean;
   esVencido: boolean;
 }
@@ -41,22 +42,24 @@ export default function FacturacionPage() {
   const [movimientos, setMovimientos] = useState<MovimientoFactura[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Periodo a liquidar
   const [mesCierreSeleccionado, setMesCierreSeleccionado] = useState<string>("");
 
-  // Filtros Avanzados
+  // ==========================================
+  // FILTROS AVANZADOS (MULTISELECT)
+  // ==========================================
   const [filtroBusqueda, setFiltroBusqueda] = useState<string>("");
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("TODAS");
-  const [filtroCanal, setFiltroCanal] = useState<string>("TODOS");
-  const [filtroReclasificado, setFiltroReclasificado] = useState<string>("REGULARES"); // 'REGULARES' | 'RECLASIFICADOS' | 'TODOS'
+  const [clientesSeleccionados, setClientesSeleccionados] = useState<(string | number)[]>([]);
+  const [canalesSeleccionados, setCanalesSeleccionados] = useState<(string | number)[]>([]);
+  const [filtroReclasificado, setFiltroReclasificado] = useState<string>("REGULARES");
   const [soloActivasEnMes, setSoloActivasEnMes] = useState<boolean>(true);
-  const [ordenSeleccionado, setOrdenSeleccionado] = useState<string>("DEFECTO"); // 'DEFECTO' | 'MONTO_DESC' | 'MONTO_ASC' | 'SALDO_MES_DESC' | 'SALDO_MES_ASC'
+  const [ordenSeleccionado, setOrdenSeleccionado] = useState<string>("DEFECTO");
 
-  // Estados Modal Cierre de Mes (Lote)
+  // Modales y Procesos
   const [itemsCierre, setItemsCierre] = useState<ItemCierreMes[]>([]);
   const [isModalCierreOpen, setIsModalCierreOpen] = useState(false);
   const [guardandoCierre, setGuardandoCierre] = useState(false);
 
-  // Estados Modal Auditoría de Comprobantes Emitidos
   const [isModalComprobantesOpen, setIsModalComprobantesOpen] = useState(false);
   const [comprobanteAEditar, setComprobanteAEditar] = useState<MovimientoFactura | null>(null);
   const [editMontoComprobante, setEditMontoComprobante] = useState<number>(0);
@@ -64,7 +67,6 @@ export default function FacturacionPage() {
   const [editArcaComprobante, setEditArcaComprobante] = useState<string>("");
   const [guardandoEdicionComprobante, setGuardandoEdicionComprobante] = useState(false);
 
-  // Estados Modal Nota de Crédito (NC)
   const [facturaParaNC, setFacturaParaNC] = useState<MovimientoFactura | null>(null);
   const [montoNC, setMontoNC] = useState<number>(0);
   const [motivoNC, setMotivoNC] = useState<string>("");
@@ -154,7 +156,30 @@ export default function FacturacionPage() {
     }
   };
 
-  // Cálculo del prorrateo proyectado
+  // ==========================================
+  // GENERACIÓN DE OPCIONES MULTISELECT
+  // ==========================================
+  const opcionesClientes: MultiSelectOption[] = useMemo(() => {
+    const mapa = new Map<string, string>();
+    deals.forEach(d => {
+      if (d.cliente_id && d.cliente?.nombre) {
+        mapa.set(d.cliente_id.toString(), d.cliente.nombre);
+      }
+    });
+    return Array.from(mapa.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [deals]);
+
+  const opcionesCanales: MultiSelectOption[] = [
+    { id: 'Digital', label: 'Digital' },
+    { id: 'InStore', label: 'InStore' },
+    { id: 'Omnicanal', label: 'Omnicanal' }
+  ];
+
+  // ==========================================
+  // CÁLCULOS GLOBALES Y PRORRATEO
+  // ==========================================
   const prorrateoMensualGlobal: Record<string, { nombreMes: string; total: number; facturado: number; pendiente: number }> = {};
 
   deals.filter(d => d.stage !== 'PERDIDO').forEach(deal => {
@@ -180,20 +205,10 @@ export default function FacturacionPage() {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([clave, data]) => ({ clave, ...data }));
 
-  // Lista única de empresas para el desplegable de clientes
-  const listaEmpresasUnicas = useMemo(() => {
-    const nombres = deals
-      .map(d => d.cliente?.nombre)
-      .filter((nombre): nombre is string => !!nombre && nombre.trim().length > 0);
-    return Array.from(new Set(nombres)).sort((a, b) => a.localeCompare(b));
-  }, [deals]);
-
-  // KPIs GLOBALES (Regulares excluyen reclasificados por defecto contable)
   const totalContratado = deals.filter(d => d.stage !== 'PERDIDO' && !d.es_reclasificado).reduce((sum, d) => sum + Number(d.amount), 0);
   const totalFacturadoReal = deals.filter(d => d.stage !== 'PERDIDO' && !d.es_reclasificado).reduce((sum, d) => sum + Number(d.monto_facturado || 0), 0);
   const totalPendienteFacturar = Math.max(0, totalContratado - totalFacturadoReal);
 
-  // KPIs DEL MES SELECCIONADO
   const movimientosDelMesSeleccionado = movimientos.filter(m => m.periodo_mes === mesCierreSeleccionado);
   const movimientosActivosMes = movimientosDelMesSeleccionado.filter(m => m.estado === 'EMITIDA');
   
@@ -213,7 +228,6 @@ export default function FacturacionPage() {
   const hoyStr = new Date().toISOString().split('T')[0];
   const mesActualKey = hoyStr.substring(0, 7);
 
-  // Deals procesados con cálculo por mes
   const dealsConProrrateoDelMes = useMemo(() => {
     return deals
       .filter(d => d.stage !== 'PERDIDO')
@@ -251,23 +265,31 @@ export default function FacturacionPage() {
       });
   }, [deals, movimientos, mesCierreSeleccionado, mesActualKey, hoyStr]);
 
-  // FILTRADO DINÁMICO Y ORDENAMIENTO DE LA TABLA
+  // ==========================================
+  // APLICACIÓN DE FILTROS DINÁMICOS
+  // ==========================================
   const dealsTablaFiltrados = useMemo(() => {
     let filtrados = dealsConProrrateoDelMes.filter(deal => {
-      // 1. Filtro de Reclasificación
+      // Régimen Contable
       if (filtroReclasificado === 'REGULARES' && deal.es_reclasificado) return false;
       if (filtroReclasificado === 'RECLASIFICADOS' && !deal.es_reclasificado) return false;
-
-      // 2. Filtro solo activas o con deuda en el mes
+      
+      // Filtro de actividad
       if (soloActivasEnMes && !deal.activaEnMesSeleccionado && !deal.esVencido) return false;
+      
+      // Selección Múltiple de Clientes / Empresas
+      if (clientesSeleccionados.length > 0) {
+        const cId = deal.cliente_id?.toString() || "";
+        if (!clientesSeleccionados.some(c => c.toString() === cId)) return false;
+      }
 
-      // 3. Filtro por Empresa
-      if (filtroEmpresa !== 'TODAS' && deal.cliente?.nombre !== filtroEmpresa) return false;
+      // Selección Múltiple de Canales
+      if (canalesSeleccionados.length > 0) {
+        const canalDeal = deal.channel || 'Digital';
+        if (!canalesSeleccionados.some(c => c.toString() === canalDeal)) return false;
+      }
 
-      // 4. Filtro por Canal / Vertical
-      if (filtroCanal !== 'TODOS' && deal.channel !== filtroCanal) return false;
-
-      // 5. Buscador predictivo por texto
+      // Búsqueda por Texto
       if (filtroBusqueda.trim()) {
         const textoBusqueda = filtroBusqueda.toLowerCase();
         const coincideCliente = deal.cliente?.nombre?.toLowerCase().includes(textoBusqueda);
@@ -278,7 +300,7 @@ export default function FacturacionPage() {
       return true;
     });
 
-    // Aplicar ordenamiento
+    // Ordenamiento
     switch (ordenSeleccionado) {
       case 'MONTO_DESC':
         filtrados.sort((a, b) => Number(b.amount) - Number(a.amount));
@@ -293,14 +315,12 @@ export default function FacturacionPage() {
         filtrados.sort((a, b) => Number(a.saldoSugeridoMes) - Number(b.saldoSugeridoMes));
         break;
       default:
-        // 'DEFECTO' mantiene el orden recibido de la consulta Supabase
         break;
     }
 
     return filtrados;
-  }, [dealsConProrrateoDelMes, filtroReclasificado, soloActivasEnMes, filtroEmpresa, filtroCanal, filtroBusqueda, ordenSeleccionado]);
+  }, [dealsConProrrateoDelMes, filtroReclasificado, soloActivasEnMes, clientesSeleccionados, canalesSeleccionados, filtroBusqueda, ordenSeleccionado]);
 
-  // TOTALES DINÁMICOS DE LA TABLA FILTRADA
   const totalesFiltrados = useMemo(() => {
     return dealsTablaFiltrados.reduce(
       (acc, d) => ({
@@ -314,6 +334,9 @@ export default function FacturacionPage() {
     );
   }, [dealsTablaFiltrados]);
 
+  // ==========================================
+  // FUNCIONES OPERATIVAS (LOTE Y COMPROBANTES)
+  // ==========================================
   const handlePrepararCierreMes = () => {
     if (!mesCierreSeleccionado) return;
 
@@ -322,11 +345,9 @@ export default function FacturacionPage() {
     const shortYear = year.slice(-2);
 
     dealsConProrrateoDelMes.forEach(deal => {
+      // Ignorar deals reclasificados para la emisión de facturas
       if (!deal.es_reclasificado && deal.mPendiente > 0 && (deal.montoProrrateadoMes > 0 || deal.esVencido)) {
-        
         const sugMontoMes = Math.min(deal.mPendiente, deal.saldoSugeridoMes > 0 ? deal.saldoSugeridoMes : deal.mPendiente);
-
-        // Enumeración automática de la leyenda SAP
         const facturasPreviasFC = deal.facturasDelDealEnMes.filter(m => m.monto > 0);
         const prevCount = facturasPreviasFC.length;
         const leyendaBase = `RM-${deal.channel || 'Digital'}-${month}-${shortYear}`;
@@ -444,23 +465,10 @@ export default function FacturacionPage() {
     });
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
-    
     ws['!cols'] = [
-      { wch: 3 },
-      { wch: 35 },
-      { wch: 18 },
-      { wch: 30 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 18 },
-      { wch: 5 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 10 },
-      { wch: 22 },
-      { wch: 10 },
+      { wch: 3 }, { wch: 35 }, { wch: 18 }, { wch: 30 }, { wch: 15 },
+      { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 5 }, { wch: 22 },
+      { wch: 18 }, { wch: 22 }, { wch: 10 }, { wch: 22 }, { wch: 10 },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -495,7 +503,6 @@ export default function FacturacionPage() {
         throw new Error(errInsert.message || errInsert.details || "Error al insertar en facturas_movimientos");
       }
 
-      // Actualizar el acumulado global en la tabla `deals`
       for (const item of seleccionados) {
         const nuevoMontoFacturado = item.montoFacturadoActual + item.montoAFacturarEditado;
         let nuevaEtapa = 'POR_FACTURAR';
@@ -537,7 +544,6 @@ export default function FacturacionPage() {
     }
   };
 
-  // Abrir popup de edición de comprobante
   const handleAbrirEdicionComprobante = (mov: MovimientoFactura) => {
     setComprobanteAEditar(mov);
     setEditMontoComprobante(mov.monto);
@@ -598,7 +604,6 @@ export default function FacturacionPage() {
     }
   };
 
-  // Anulación Directa
   const handleAnularComprobante = async (mov: MovimientoFactura) => {
     const confirmacion = window.confirm(
       `¿Estás seguro de anular el comprobante ${mov.numero_factura_interna}?\n\nEsta acción revertirá su impacto económico ($${Math.abs(mov.monto).toLocaleString()}) y lo marcará como ANULADO en el historial.`
@@ -640,7 +645,6 @@ export default function FacturacionPage() {
     }
   };
 
-  // Emisión de Nota de Crédito (NC)
   const handleAbrirModalNC = (factura: MovimientoFactura) => {
     setFacturaParaNC(factura);
     setMontoNC(factura.monto);
@@ -705,7 +709,6 @@ export default function FacturacionPage() {
     }
   };
 
-  // Exportar reporte Excel de Comprobantes emitidos del período
   const handleExportarExcelComprobantes = () => {
     if (movimientosDelMesSeleccionado.length === 0) {
       alert("No hay comprobantes para exportar en el período seleccionado.");
@@ -735,14 +738,8 @@ export default function FacturacionPage() {
 
     const ws = XLSX.utils.aoa_to_sheet(dataExcel);
     ws['!cols'] = [
-      { wch: 18 }, // N° Comprobante
-      { wch: 16 }, // Tipo
-      { wch: 12 }, // Estado
-      { wch: 18 }, // ID ARCA
-      { wch: 30 }, // Campaña
-      { wch: 30 }, // Leyenda
-      { wch: 18 }, // Monto
-      { wch: 15 }  // Fecha
+      { wch: 18 }, { wch: 16 }, { wch: 12 }, { wch: 18 },
+      { wch: 30 }, { wch: 30 }, { wch: 18 }, { wch: 15 }
     ];
 
     const wb = XLSX.utils.book_new();
@@ -767,8 +764,7 @@ export default function FacturacionPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-6 animate-fade-in">
-          
-          {/* ROW 1: KPIs GLOBALES */}
+          {/* TARJETAS DE KPIS SUPERIORES */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-slate-900/60 border border-white/10 p-6 rounded-2xl backdrop-blur-md">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Monto Total Contratado (Histórico)</p>
@@ -784,7 +780,6 @@ export default function FacturacionPage() {
             </div>
           </div>
 
-          {/* ROW 2: KPIs DEL PERÍODO ACTUAL */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-indigo-950/30 border border-indigo-500/20 p-5 rounded-2xl backdrop-blur-md flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
@@ -806,14 +801,16 @@ export default function FacturacionPage() {
             </div>
           </div>
 
+          {/* ========================================================= */}
+          {/* ZONA DE AUDITORÍA Y FILTROS */}
+          {/* ========================================================= */}
           <section className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md space-y-5">
-            {/* CABECERA PRINCIPAL Y SELECTOR DE PERÍODO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-700/60 pb-4">
               <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-emerald-400 text-3xl">fact_check</span>
                 <div>
                   <h2 className="text-xl font-bold text-white">Auditoría y Cierre de Mes</h2>
-                  <p className="text-xs text-slate-400">Filtra por empresa, canal o monto y liquida acuerdos por lote.</p>
+                  <p className="text-xs text-slate-400">Filtra, proyecta y liquida acuerdos por lote.</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -834,7 +831,7 @@ export default function FacturacionPage() {
                   className="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 hover:border-cyan-400 font-bold px-4 py-2.5 rounded-lg transition-all flex items-center gap-2 text-sm cursor-pointer shadow-sm"
                 >
                   <span className="material-symbols-outlined text-sm">visibility</span>
-                  Ver Comprobantes del Mes ({movimientosDelMesSeleccionado.length})
+                  Ver Comprobantes ({movimientosDelMesSeleccionado.length})
                 </button>
 
                 <button
@@ -847,11 +844,10 @@ export default function FacturacionPage() {
               </div>
             </div>
 
-            {/* BARRA DE FILTROS AVANZADOS Y ORDEN */}
+            {/* BARRA DE FILTROS AVANZADOS MULTISELECT */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-              {/* 1. Buscador */}
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Buscar Campaña / Cliente</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Buscar Campaña / Título</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -864,37 +860,22 @@ export default function FacturacionPage() {
                 </div>
               </div>
 
-              {/* 2. Filtro por Empresa */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Empresa / Cliente</label>
-                <select
-                  value={filtroEmpresa}
-                  onChange={(e) => setFiltroEmpresa(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="TODAS">Todas las Empresas ({listaEmpresasUnicas.length})</option>
-                  {listaEmpresasUnicas.map(emp => (
-                    <option key={emp} value={emp}>{emp}</option>
-                  ))}
-                </select>
-              </div>
+              <MultiSelect
+                label="Empresas / Clientes"
+                placeholder="Todos los clientes"
+                options={opcionesClientes}
+                selectedValues={clientesSeleccionados}
+                onChange={setClientesSeleccionados}
+              />
 
-              {/* 3. Filtro por Canal / Vertical */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Canal / Vertical</label>
-                <select
-                  value={filtroCanal}
-                  onChange={(e) => setFiltroCanal(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:border-cyan-400"
-                >
-                  <option value="TODOS">Todos los Canales</option>
-                  <option value="Digital">Digital</option>
-                  <option value="InStore">InStore</option>
-                  <option value="Omnicanal">Omnicanal</option>
-                </select>
-              </div>
+              <MultiSelect
+                label="Canal / Vertical"
+                placeholder="Todos los canales"
+                options={opcionesCanales}
+                selectedValues={canalesSeleccionados}
+                onChange={setCanalesSeleccionados}
+              />
 
-              {/* 4. Filtro de Reclasificación */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Régimen Contable</label>
                 <select
@@ -908,7 +889,6 @@ export default function FacturacionPage() {
                 </select>
               </div>
 
-              {/* 5. Ordenamiento */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Ordenar Por</label>
                 <select
@@ -925,7 +905,6 @@ export default function FacturacionPage() {
               </div>
             </div>
 
-            {/* FILTRO VIGENCIA Y RESUMEN DINÁMICO */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs bg-slate-800/40 px-4 py-2.5 rounded-lg border border-slate-800">
               <label className="flex items-center gap-2 text-slate-300 hover:text-white cursor-pointer font-medium">
                 <input 
@@ -937,17 +916,15 @@ export default function FacturacionPage() {
                 <span>Ver solo campañas con vigencia o deuda en <strong className="text-cyan-400">{obtenerNombreMesFormateado(mesCierreSeleccionado)}</strong></span>
               </label>
 
-              {/* BARRA DE TOTALES DINÁMICOS FILTRADOS */}
               <div className="flex flex-wrap items-center gap-3 font-mono text-slate-300">
-                <span>Acuerdos: <strong className="text-white">{dealsTablaFiltrados.length}</strong></span>
+                <span>Acuerdos Visualizados: <strong className="text-white">{dealsTablaFiltrados.length}</strong></span>
                 <span className="text-slate-600">|</span>
-                <span>Contratado: <strong className="text-white">${totalesFiltrados.totalContratado.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
+                <span>Monto Contratado: <strong className="text-white">${totalesFiltrados.totalContratado.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
                 <span className="text-slate-600">|</span>
                 <span>Saldo Mes: <strong className="text-cyan-400">${totalesFiltrados.totalSaldoMes.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
               </div>
             </div>
 
-            {/* CONTENEDOR CON SCROLL Y ENCABEZADOS FIJOS (STICKY HEADER) */}
             <div className="max-h-[580px] overflow-y-auto relative rounded-lg border border-slate-700/60 shadow-inner">
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="text-[11px] text-slate-300 uppercase tracking-wider bg-slate-950 sticky top-0 z-20 shadow-md">
@@ -1056,7 +1033,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
-      {/* MODAL 1: CONFIRMACIÓN Y CIERRE DE MES (LOTE) */}
+      {/* MODAL DE CIERRE DE MES */}
       {isModalCierreOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalCierreOpen(false)}></div>
@@ -1202,7 +1179,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
-      {/* MODAL 2: AUDITORÍA DE COMPROBANTES DEL MES */}
+      {/* MODALES ADICIONALES (Comprobantes, Edición, Notas de Crédito) */}
       {isModalComprobantesOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalComprobantesOpen(false)}></div>
@@ -1219,7 +1196,6 @@ export default function FacturacionPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {/* BOTÓN EXPORTAR REPORTE EXCEL DE COMPROBANTES */}
                 <button
                   onClick={handleExportarExcelComprobantes}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm"
@@ -1346,7 +1322,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
-      {/* POPUP SUB-MODAL 1: EDITAR COMPROBANTE INDIVIDUAL */}
+      {/* MODAL PARA EDITAR COMPROBANTE INDIVIDUAL */}
       {comprobanteAEditar && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={() => setComprobanteAEditar(null)}></div>
@@ -1429,7 +1405,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
-      {/* POPUP SUB-MODAL 2: EMITIR NOTA DE CRÉDITO (TOTAL O PARCIAL) */}
+      {/* MODAL NOTA DE CRÉDITO */}
       {facturaParaNC && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={() => setFacturaParaNC(null)}></div>

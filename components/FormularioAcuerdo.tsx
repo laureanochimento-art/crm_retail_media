@@ -82,26 +82,43 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
   }, [modo, dealAEditar]);
 
   const fetchTablasApoyo = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.email) {
-      const { data } = await supabase.from('usuarios').select('*').eq('email', session.user.email).single();
-      if (data) {
-        setCurrentUser(data as Usuario);
-        if (modo === 'CREATE') setVendedorSeleccionado(data.id.toString());
+    try {
+      const [
+        { data: { user } },
+        { data: dataUsuarios },
+        { data: dataClientes },
+        { data: dataCatalogo },
+        { data: dataTiendas }
+      ] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.from('usuarios').select('*'),
+        supabase.from('clientes').select('*'),
+        supabase.from('catalogo').select('*'),
+        supabase.from('tiendas').select('*').order('numero', { ascending: true })
+      ]);
+
+      const listaUsuarios: Usuario[] = (dataUsuarios as Usuario[]) || [];
+      if (dataUsuarios) setUsuarios(listaUsuarios);
+      if (dataClientes) setClientes(dataClientes);
+      if (dataCatalogo) setCatalogo(dataCatalogo);
+      if (dataTiendas) setTiendas(dataTiendas as Tienda[]);
+
+      if (user?.email && listaUsuarios.length > 0) {
+        const emailNormalizado = user.email.trim().toLowerCase();
+        const usuarioEncontrado = listaUsuarios.find(
+          u => u.email?.trim().toLowerCase() === emailNormalizado
+        );
+
+        if (usuarioEncontrado) {
+          setCurrentUser(usuarioEncontrado);
+          if (modo === 'CREATE') {
+            setVendedorSeleccionado(usuarioEncontrado.id.toString());
+          }
+        }
       }
+    } catch (err) {
+      console.error("Error al inicializar datos del formulario:", err);
     }
-
-    const { data: dataClientes } = await supabase.from('clientes').select('*');
-    if (dataClientes) setClientes(dataClientes);
-
-    const { data: dataCatalogo } = await supabase.from('catalogo').select('*');
-    if (dataCatalogo) setCatalogo(dataCatalogo);
-
-    const { data: dataTiendas } = await supabase.from('tiendas').select('*').order('numero', { ascending: true });
-    if (dataTiendas) setTiendas(dataTiendas as Tienda[]);
-
-    const { data: dataUsuarios } = await supabase.from('usuarios').select('*');
-    if (dataUsuarios) setUsuarios(dataUsuarios);
   };
 
   const cargarDatosEdicion = (deal: Deal) => {
@@ -451,7 +468,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
       const inicio = rawD1 <= rawD2 ? rawD1 : rawD2;
       const fin = rawD1 <= rawD2 ? rawD2 : rawD1;
 
-      if (periodo === 'Único' || periodo === 'unico' || periodo === 'Unico' || periodo === ' nico') {
+      if (periodo === 'Único' || periodo === 'unico' || periodo === 'Unico' || periodo === 'único') {
         const mesInicio = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}`;
         const fact = factoresCompuestosGlobales[mesInicio] || 1.0;
         suma += item.subtotal * fact;
@@ -605,6 +622,11 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
     }
   };
 
+  const esGestion = useMemo(() => {
+    const rol = (currentUser?.rol || '').toUpperCase().trim();
+    return ['JEFE_VENTAS', 'JEFE DE VENTAS', 'ADMIN', 'ADMINISTRADOR', 'GERENTE', 'DIRECTOR'].includes(rol);
+  }, [currentUser]);
+
   const handleSaveDeal = async () => {
     const listaFinal = obtenerListaElementosConsolidada();
     if (!titulo.trim() || !clienteSeleccionado || listaFinal.length === 0) {
@@ -614,6 +636,39 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
 
     setGuardando(true);
     try {
+      let vendedorIdFinal: any = undefined;
+
+      if (esGestion) {
+        if (vendedorSeleccionado) {
+          vendedorIdFinal = isNaN(Number(vendedorSeleccionado))
+            ? vendedorSeleccionado
+            : Number(vendedorSeleccionado);
+        } else if (currentUser?.id) {
+          vendedorIdFinal = currentUser.id;
+        }
+      } else {
+        if (modo === 'CREATE') {
+          vendedorIdFinal = currentUser?.id;
+        } else {
+          vendedorIdFinal = dealAEditar?.vendedor_id || currentUser?.id;
+        }
+      }
+
+      if (!vendedorIdFinal) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email && usuarios.length > 0) {
+          const emailNorm = user.email.trim().toLowerCase();
+          const u = usuarios.find(x => x.email?.trim().toLowerCase() === emailNorm);
+          if (u) vendedorIdFinal = u.id;
+        }
+      }
+
+      if (!vendedorIdFinal) {
+        alert("No se pudo identificar al vendedor responsable. Por favor verifica tu sesión de usuario.");
+        setGuardando(false);
+        return;
+      }
+
       const todasFechasMillis = listaFinal.flatMap(i => [
         i.fechaDesde ? new Date(`${i.fechaDesde}T12:00:00Z`).getTime() : null,
         i.fechaHasta ? new Date(`${i.fechaHasta}T12:00:00Z`).getTime() : null
@@ -660,7 +715,9 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         ? (dealAEditar?.stage || 'OPORTUNIDAD')
         : (origen === 'CRM' ? 'OPORTUNIDAD' : 'COTIZADO');
 
-      const dealData = {
+      let dealIdToUse: any = modo === 'EDIT' ? dealAEditar?.id : null;
+
+      const dealData: any = {
         titulo: titulo,
         amount: Math.round(totalFinal),
         channel: canalPrincipal,
@@ -677,11 +734,9 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
         adjuntos: todosLosAdjuntos,
         elementos_json: elementosProcesados,
         es_reclasificado: esReclasificado,
-        vendedor_id: vendedorSeleccionado ? Number(vendedorSeleccionado) : (currentUser?.id || null),
+        vendedor_id: vendedorIdFinal,
         stage: stageToSave
       };
-
-      let dealIdToUse = modo === 'EDIT' ? dealAEditar?.id : null;
 
       if (modo === 'CREATE') {
         const { data, error } = await supabase.from('deals').insert([dealData]).select().single();
@@ -739,14 +794,50 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                   <label className="text-xs font-semibold text-slate-400 block mb-1">Título del Acuerdo *</label>
                   <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400" />
                 </div>
-                {currentUser?.rol === 'JEFE_VENTAS' && (
-                  <div>
-                    <label className="text-xs font-semibold text-slate-400 block mb-1">Responsable / Vendedor</label>
-                    <select value={vendedorSeleccionado} onChange={(e) => setVendedorSeleccionado(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400">
-                      {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                    </select>
-                  </div>
-                )}
+
+                {/* CAMPO DE VENDEDOR SEGÚN EL ROL */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 block mb-1">
+                    Responsable / Vendedor <span className="text-cyan-400">*</span>
+                  </label>
+
+                  {esGestion ? (
+                    <div>
+                      <select
+                        value={vendedorSeleccionado || ""}
+                        onChange={(e) => setVendedorSeleccionado(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm focus:border-cyan-400 cursor-pointer"
+                      >
+                        <option value="">-- Seleccionar Vendedor --</option>
+                        {usuarios.map(u => (
+                          <option key={u.id} value={u.id}>
+                            {u.nombre} ({u.rol || 'Vendedor'}) {u.id?.toString() === currentUser?.id?.toString() ? ' ★ (Tú)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Preasignado o reasignable por Jefatura / Administración.
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="w-full bg-slate-950/80 border border-slate-800 rounded p-2 text-white text-sm flex items-center justify-between shadow-inner">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-slate-400 text-sm">lock</span>
+                          <span className="font-semibold text-slate-200">
+                            {usuarios.find(u => u.id?.toString() === vendedorSeleccionado)?.nombre || currentUser?.nombre || ((dealAEditar as any)?.vendedor?.nombre) || "Asignación Automática"}
+                          </span>
+                        </div>
+                        <span className="text-[10px] bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded font-mono font-bold border border-cyan-500/20">
+                          {currentUser?.rol || 'Vendedor'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Asignado automáticamente (no editable por vendedores).
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -903,7 +994,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                         )}
                         <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
                           <span>{adjuntoDesktop ? "Reemplazar" : "Subir"}</span>
-                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoDesktop?.categoria || 'DISE O_DESKTOP') as any)} className="hidden" />
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoDesktop?.categoria || 'DISEÑO_DESKTOP') as any)} className="hidden" />
                         </label>
                       </div>
                     </div>
@@ -934,7 +1025,7 @@ export default function FormularioAcuerdo({ origen, modo, dealAEditar, onCerrar,
                         )}
                         <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer border border-slate-700 transition-colors">
                           <span>{adjuntoMobile ? "Reemplazar" : "Subir"}</span>
-                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoMobile?.categoria || 'DISE O_MOBILE') as any)} className="hidden" />
+                          <input type="file" accept="image/*" disabled={subiendoArchivo} onChange={(e) => handleSubirArchivo(e, (adjuntoMobile?.categoria || 'DISEÑO_MOBILE') as any)} className="hidden" />
                         </label>
                       </div>
                     </div>
