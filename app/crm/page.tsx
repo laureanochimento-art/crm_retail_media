@@ -28,19 +28,17 @@ export default function CRMPage() {
   // FILTROS DEL CRM
   // ====================================================
   const [filtroTexto, setFiltroTexto] = useState("");
-  
-  // Selección múltiple
   const [vendedoresSeleccionados, setVendedoresSeleccionados] = useState<(string | number)[]>([]);
   const [clientesSeleccionados, setClientesSeleccionados] = useState<(string | number)[]>([]);
   const [canalesSeleccionados, setCanalesSeleccionados] = useState<(string | number)[]>([]);
 
   // Filtros de control
   const [filtroMisNegocios, setFiltroMisNegocios] = useState(false);
-  const [filtroRegimen, setFiltroRegimen] = useState<string>("REGULARES"); // 'REGULARES' | 'RECLASIFICADOS' | 'TODOS'
-  const [filtroAging, setFiltroAging] = useState<string>("TODOS"); // 'TODOS' | 'ESTANCADOS_15' | 'ESTANCADOS_30'
-  const [filtroTipoCuenta, setFiltroTipoCuenta] = useState<string>("TODAS"); // 'TODAS' | 'DIRECTO' | 'AGENCIA'
+  const [filtroRegimen, setFiltroRegimen] = useState<string>("REGULARES");
+  const [filtroAging, setFiltroAging] = useState<string>("TODOS");
+  const [filtroTipoCuenta, setFiltroTipoCuenta] = useState<string>("TODAS");
   const [ticketMinimo, setTicketMinimo] = useState<number>(0);
-  const [ordenSeleccionado, setOrdenSeleccionado] = useState<string>("RECENT"); // 'RECENT' | 'MONTO_DESC' | 'MONTO_ASC' | 'OLDEST'
+  const [ordenSeleccionado, setOrdenSeleccionado] = useState<string>("RECENT");
 
   useEffect(() => {
     fetchData();
@@ -50,7 +48,6 @@ export default function CRMPage() {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-
       const [
         { data: dataDeals, error: errDeals },
         { data: dataUsuarios }
@@ -82,7 +79,6 @@ export default function CRMPage() {
     }
   };
 
-  // Opciones para los selectores múltiples
   const opcionesVendedores: MultiSelectOption[] = useMemo(() => {
     return usuarios.map(u => ({
       id: u.id,
@@ -94,7 +90,6 @@ export default function CRMPage() {
   const opcionesClientes: MultiSelectOption[] = useMemo(() => {
     const nombresVistos = new Set<string>();
     const lista: MultiSelectOption[] = [];
-
     deals.forEach(d => {
       const nombre = d.cliente?.nombre;
       const id = d.cliente_id;
@@ -107,7 +102,6 @@ export default function CRMPage() {
         });
       }
     });
-
     return lista.sort((a, b) => a.label.localeCompare(b.label));
   }, [deals]);
 
@@ -130,8 +124,8 @@ export default function CRMPage() {
     e.preventDefault();
     const dealIdStr = e.dataTransfer.getData("dealId");
     if (!dealIdStr) return;
-    const dealId = Number(dealIdStr);
 
+    const dealId = Number(dealIdStr);
     const dealActual = deals.find(d => d.id === dealId);
     if (!dealActual || dealActual.stage === nuevaEtapa) return;
 
@@ -152,9 +146,28 @@ export default function CRMPage() {
     }
   };
 
+  // Función para eliminar deal directamente desde la tarjeta
+  const handleEliminarDeal = async (e: React.MouseEvent, dealId: number, titulo?: string) => {
+    e.stopPropagation();
+    const confirmar = window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el acuerdo "${titulo || 'este acuerdo'}"?`);
+    if (!confirmar) return;
+
+    // Actualización visual inmediata
+    setDeals(prev => prev.filter(d => d.id !== dealId));
+
+    try {
+      await supabase.from('deal_tiendas').delete().eq('deal_id', dealId);
+      const { error } = await supabase.from('deals').delete().eq('id', dealId);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error al eliminar acuerdo:", err);
+      alert(`No se pudo eliminar: ${err.message || err}`);
+      fetchData();
+    }
+  };
+
   // Filtrado de acuerdos
   const hoyMillis = new Date().getTime();
-
   const dealsFiltrados = useMemo(() => {
     return deals.filter(deal => {
       // 1. Buscador predictivo por texto
@@ -192,11 +205,11 @@ export default function CRMPage() {
         if (!coincide) return false;
       }
 
-      // 6. Régimen Contable (Reclasificación)
+      // 6. Régimen Contable
       if (filtroRegimen === 'REGULARES' && deal.es_reclasificado) return false;
       if (filtroRegimen === 'RECLASIFICADOS' && !deal.es_reclasificado) return false;
 
-      // 7. Tipo de Cuenta (Directo vs Agencia)
+      // 7. Tipo de Cuenta
       const esAgencia = deal.cliente?.es_agencia;
       if (filtroTipoCuenta === 'DIRECTO' && esAgencia) return false;
       if (filtroTipoCuenta === 'AGENCIA' && !esAgencia) return false;
@@ -256,23 +269,21 @@ export default function CRMPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pipeline CRM</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Monitoreo comercial, seguimiento de etapas y control de conversión.
+            Monitoreo comercial, seguimiento de etapas y control de conversión
           </p>
         </div>
-
         <div className="flex items-center gap-3">
           <button
             onClick={() => setFiltroMisNegocios(!filtroMisNegocios)}
             className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
-              filtroMisNegocios 
-                ? 'bg-cyan-500 text-slate-900 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
+              filtroMisNegocios
+                ? 'bg-cyan-500 text-slate-900 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
                 : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
             }`}
           >
             <span className="material-symbols-outlined text-sm">person</span>
             {filtroMisNegocios ? 'Viendo: Mis Negocios' : 'Filtrar Mis Negocios'}
           </button>
-
           <button
             onClick={handleAbrirNuevo}
             className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.25)]"
@@ -287,7 +298,6 @@ export default function CRMPage() {
       <div className="bg-slate-900/80 border border-white/10 p-4 rounded-xl backdrop-blur-md space-y-3 flex-shrink-0 shadow-lg">
         {/* FILA 1: SELECTORES MÚLTIPLES Y BUSCADOR */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Buscador de texto */}
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Buscar Campaña</label>
             <div className="relative">
@@ -301,8 +311,6 @@ export default function CRMPage() {
               <span className="material-symbols-outlined text-slate-500 text-sm absolute left-2.5 top-2.5">search</span>
             </div>
           </div>
-
-          {/* Selector Múltiple: Vendedores */}
           <MultiSelect
             label="Vendedor / Responsable"
             placeholder="Todos los vendedores"
@@ -310,8 +318,6 @@ export default function CRMPage() {
             selectedValues={vendedoresSeleccionados}
             onChange={setVendedoresSeleccionados}
           />
-
-          {/* Selector Múltiple: Clientes / Empresas */}
           <MultiSelect
             label="Cliente / Empresa"
             placeholder="Todos los clientes"
@@ -319,8 +325,6 @@ export default function CRMPage() {
             selectedValues={clientesSeleccionados}
             onChange={setClientesSeleccionados}
           />
-
-          {/* Selector Múltiple: Canales */}
           <MultiSelect
             label="Canal / Vertical"
             placeholder="Todos los canales"
@@ -344,7 +348,6 @@ export default function CRMPage() {
               <option value="TODOS">Todos</option>
             </select>
           </div>
-
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tipo Cuenta</label>
             <select
@@ -357,7 +360,6 @@ export default function CRMPage() {
               <option value="AGENCIA">Solo Agencia</option>
             </select>
           </div>
-
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Aging (Estancados)</label>
             <select
@@ -370,7 +372,6 @@ export default function CRMPage() {
               <option value="ESTANCADOS_30">&gt; 30 días sin avance</option>
             </select>
           </div>
-
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Ticket Mínimo ($)</label>
             <input
@@ -383,7 +384,6 @@ export default function CRMPage() {
               className="w-full bg-slate-950 border border-slate-700 text-cyan-400 font-mono text-xs rounded-lg px-2.5 py-1.5 focus:border-cyan-400"
             />
           </div>
-
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Ordenar Por</label>
             <select
@@ -397,7 +397,6 @@ export default function CRMPage() {
               <option value="OLDEST">Más Antiguos</option>
             </select>
           </div>
-
           <div className="flex items-end">
             <button
               onClick={() => {
@@ -440,7 +439,6 @@ export default function CRMPage() {
           {ETAPAS_PIPELINE.map(etapa => {
             const dealsEtapa = dealsFiltrados.filter(d => (d.stage || 'COTIZADO') === etapa.key);
             const totalEtapa = dealsEtapa.reduce((sum, d) => sum + Number(d.amount || 0), 0);
-
             return (
               <div
                 key={etapa.key}
@@ -471,8 +469,8 @@ export default function CRMPage() {
                     </div>
                   ) : (
                     dealsEtapa.map(deal => {
-                      const diasAntiguedad = deal.created_at 
-                        ? Math.round((hoyMillis - new Date(deal.created_at).getTime()) / (1000 * 60 * 60 * 24)) 
+                      const diasAntiguedad = deal.created_at
+                        ? Math.round((hoyMillis - new Date(deal.created_at).getTime()) / (1000 * 60 * 60 * 24))
                         : 0;
                       const esEstancado = (deal.stage === 'COTIZADO' || deal.stage === 'OPORTUNIDAD') && diasAntiguedad >= 20;
 
@@ -483,15 +481,25 @@ export default function CRMPage() {
                           onDragStart={(e) => handleDragStart(e, deal.id)}
                           onClick={() => handleAbrirEdicion(deal)}
                           className={`p-4 rounded-xl bg-slate-950 border transition-all cursor-grab active:cursor-grabbing hover:border-cyan-400/80 hover:shadow-lg group relative ${
-                            deal.es_reclasificado 
-                              ? 'border-purple-500/40 bg-purple-950/10' 
-                              : esEstancado 
-                                ? 'border-amber-500/50 bg-amber-950/10' 
+                            deal.es_reclasificado
+                              ? 'border-purple-500/40 bg-purple-950/10'
+                              : esEstancado
+                                ? 'border-amber-500/50 bg-amber-950/10'
                                 : 'border-slate-800 hover:bg-slate-900/60'
                           }`}
                         >
+                          {/* Botón rápido para eliminar tarjeta */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleEliminarDeal(e, deal.id, deal.titulo)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded transition-all absolute top-3 right-3 z-10"
+                            title="Eliminar acuerdo"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+
                           {/* Insignia de Reclasificación o Aging */}
-                          <div className="flex items-center gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5 mb-1.5 pr-6">
                             {deal.es_reclasificado && (
                               <span className="text-[9px] bg-purple-500/20 text-purple-300 font-bold px-1.5 py-0.5 rounded border border-purple-500/30">
                                 Reclasificado
@@ -506,7 +514,7 @@ export default function CRMPage() {
                           </div>
 
                           {/* Título y Cliente */}
-                          <h4 className="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors line-clamp-1">
+                          <h4 className="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors line-clamp-1 pr-6">
                             {deal.titulo}
                           </h4>
                           <p className="text-xs text-slate-400 truncate mt-0.5">
