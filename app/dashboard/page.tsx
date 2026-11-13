@@ -4,12 +4,13 @@ import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import { Deal, Tienda, Usuario, Adjunto } from "../../lib/types";
 import MultiSelect, { MultiSelectOption } from "../../components/MultiSelect";
+import { calcularProrrateoDeal, calcularProrrateoPorDias } from "../../lib/prorrateo";
 import * as XLSX from 'xlsx';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
-  const [activeTab, setActiveTab] = useState<'general' | 'operaciones' | 'gestion'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'operaciones' | 'facturacion' | 'gestion'>('general');
 
   const [deals, setDeals] = useState<any[]>([]);
   const [tiendas, setTiendas] = useState<Tienda[]>([]);
@@ -40,6 +41,16 @@ export default function DashboardPage() {
   const [tiendasSeleccionadasP2, setTiendasSeleccionadasP2] = useState<(string | number)[]>([]);
   const [formatosSeleccionadosP2, setFormatosSeleccionadosP2] = useState<(string | number)[]>([]);
   const [filtroVigenciaOperativa, setFiltroVigenciaOperativa] = useState<string>("TODAS"); // 'TODAS' | 'VIGENTES_HOY' | 'PROXIMAS' | 'FINALIZADAS'
+
+  // ==========================================
+  // FILTROS Y ESTADO PESTAÑA 4 (VENTAS MENSUALES FACTURABLES)
+  // ==========================================
+  const [clientesSeleccionadosP4, setClientesSeleccionadosP4] = useState<(string | number)[]>([]);
+  const [vendedoresSeleccionadosP4, setVendedoresSeleccionadosP4] = useState<(string | number)[]>([]);
+  const [filtroEtapaFacturableP4, setFiltroEtapaFacturableP4] = useState<'TODAS_FACTURABLES' | 'POR_FACTURAR' | 'FACTURADO'>('TODAS_FACTURABLES');
+  const [filtroAnioP4, setFiltroAnioP4] = useState<string>("TODOS");
+  const [busquedaMatrizP4, setBusquedaMatrizP4] = useState<string>("");
+  const [empresasExpandidasP4, setEmpresasExpandidasP4] = useState<Record<string, boolean>>({});
 
   // ==========================================
   // FILTROS PESTAÑA 3 (GESTIÓN COMERCIAL)
@@ -88,7 +99,6 @@ export default function DashboardPage() {
       if (dataDeals) setDeals(dataDeals);
       if (dataTiendas) setTiendas(dataTiendas as Tienda[]);
       if (dataDealTiendas) setDealTiendas(dataDealTiendas);
-
     } catch (err) {
       console.error("Error cargando datos de dashboard:", err);
     } finally {
@@ -215,7 +225,7 @@ export default function DashboardPage() {
   // =========================================================================
   // CÁLCULOS PESTAÑA 1: VISIÓN GENERAL & VENTAS
   // =========================================================================
-  const dealsPestaña1 = useMemo(() => {
+  const dealsPestana1 = useMemo(() => {
     return dealsFiltradosGlobal.filter(deal => {
       // MultiSelect Clientes / Empresas
       if (clientesSeleccionadosP1.length > 0) {
@@ -242,11 +252,11 @@ export default function DashboardPage() {
   }, [dealsFiltradosGlobal, clientesSeleccionadosP1, vendedoresSeleccionadosP1, filtroTipoCuentaP1, filtroMontoMinimoP1]);
 
   const kpisGlobales = useMemo(() => {
-    const totalContratado = dealsPestaña1.reduce((acc, d) => acc + Number(d.amount || 0), 0);
-    const totalFacturado = dealsPestaña1.reduce((acc, d) => acc + Number(d.monto_facturado || (d.stage === 'FACTURADO' ? d.amount : 0)), 0);
+    const totalContratado = dealsPestana1.reduce((acc, d) => acc + Number(d.amount || 0), 0);
+    const totalFacturado = dealsPestana1.reduce((acc, d) => acc + Number(d.monto_facturado || (d.stage === 'FACTURADO' ? d.amount : 0)), 0);
     const totalDeuda = Math.max(0, totalContratado - totalFacturado);
     const totalReclasificados = deals.filter(d => d.es_reclasificado && d.stage !== 'PERDIDO').reduce((acc, d) => acc + Number(d.amount || 0), 0);
-    const totalDealsActivos = dealsPestaña1.filter(d => d.stage !== 'FACTURADO').length;
+    const totalDealsActivos = dealsPestana1.filter(d => d.stage !== 'FACTURADO').length;
 
     return {
       totalContratado,
@@ -254,14 +264,14 @@ export default function DashboardPage() {
       totalDeuda,
       totalReclasificados,
       totalDealsActivos,
-      cantidadTotalDeals: dealsPestaña1.length
+      cantidadTotalDeals: dealsPestana1.length
     };
-  }, [dealsPestaña1, deals]);
+  }, [dealsPestana1, deals]);
 
   const topEmpresas = useMemo(() => {
     const mapa: Record<string, { clienteId: number; nombre: string; totalContratado: number; totalFacturado: number; saldo: number; cantidad: number }> = {};
 
-    dealsPestaña1.forEach(d => {
+    dealsPestana1.forEach(d => {
       const clienteNombre = d.cliente?.nombre || 'Sin Cliente Asignado';
       const cId = d.cliente_id || 0;
       if (!mapa[clienteNombre]) {
@@ -274,7 +284,6 @@ export default function DashboardPage() {
           cantidad: 0
         };
       }
-
       const fact = Number(d.monto_facturado || (d.stage === 'FACTURADO' ? d.amount : 0));
       mapa[clienteNombre].totalContratado += Number(d.amount || 0);
       mapa[clienteNombre].totalFacturado += fact;
@@ -283,7 +292,7 @@ export default function DashboardPage() {
     });
 
     return Object.values(mapa).sort((a, b) => b.totalContratado - a.totalContratado);
-  }, [dealsPestaña1]);
+  }, [dealsPestana1]);
 
   const ingresosPorCanal = useMemo(() => {
     const mapa: Record<string, { canal: string; total: number; cantidad: number }> = {
@@ -292,7 +301,7 @@ export default function DashboardPage() {
       'Omnicanal': { canal: 'Omnicanal', total: 0, cantidad: 0 }
     };
 
-    dealsPestaña1.forEach(d => {
+    dealsPestana1.forEach(d => {
       const canal = d.channel || 'Digital';
       if (!mapa[canal]) {
         mapa[canal] = { canal, total: 0, cantidad: 0 };
@@ -302,12 +311,12 @@ export default function DashboardPage() {
     });
 
     return Object.values(mapa);
-  }, [dealsPestaña1]);
+  }, [dealsPestana1]);
 
   const metricasPorTienda = useMemo(() => {
     const conteoDealsTienda: Record<number, { cantidadDeals: number; montoAsignado: number; dealsNombres: Set<string> }> = {};
 
-    dealsPestaña1.forEach(deal => {
+    dealsPestana1.forEach(deal => {
       const dealAmount = Number(deal.amount || 0);
       const items = deal.elementos_json || [];
       const dealTiendasIds = new Set<number>();
@@ -337,9 +346,9 @@ export default function DashboardPage() {
       ...t,
       cantidadDeals: conteoDealsTienda[t.id]?.cantidadDeals || 0,
       montoAsignado: conteoDealsTienda[t.id]?.montoAsignado || 0,
-      campañas: Array.from(conteoDealsTienda[t.id]?.dealsNombres || [])
+      campanas: Array.from(conteoDealsTienda[t.id]?.dealsNombres || [])
     })).sort((a, b) => b.montoAsignado - a.montoAsignado);
-  }, [tiendas, dealsPestaña1, dealTiendas]);
+  }, [tiendas, dealsPestana1, dealTiendas]);
 
   // =========================================================================
   // CÁLCULOS PESTAÑA 2: OPERACIONES & RENDERS
@@ -354,7 +363,7 @@ export default function DashboardPage() {
 
     // MultiSelect Formatos de Tienda
     if (formatosSeleccionadosP2.length > 0) {
-      tiendasFiltradas = tiendasFiltradas.filter(t => 
+      tiendasFiltradas = tiendasFiltradas.filter(t =>
         formatosSeleccionadosP2.some(f => f.toString() === (t.formato || 'Hipermercado'))
       );
     }
@@ -362,14 +371,14 @@ export default function DashboardPage() {
     // Búsqueda por texto libre
     if (busquedaTienda.trim()) {
       const q = busquedaTienda.toLowerCase();
-      tiendasFiltradas = tiendasFiltradas.filter(t => 
+      tiendasFiltradas = tiendasFiltradas.filter(t =>
         t.nombre.toLowerCase().includes(q) || String(t.numero).includes(q) || (t.formato && t.formato.toLowerCase().includes(q))
       );
     }
 
     // MultiSelect Sucursales / Tiendas
     if (tiendasSeleccionadasP2.length > 0) {
-      tiendasFiltradas = tiendasFiltradas.filter(t => 
+      tiendasFiltradas = tiendasFiltradas.filter(t =>
         tiendasSeleccionadasP2.some(id => id.toString() === t.id.toString())
       );
     }
@@ -436,18 +445,284 @@ export default function DashboardPage() {
   }, [metricasPorTienda, formatosSeleccionadosP2, busquedaTienda, tiendasSeleccionadasP2, dealsFiltradosGlobal, dealTiendas, filtroVigenciaOperativa, hoyStr, en15DiasStr]);
 
   // =========================================================================
+  // CÁLCULOS PESTAÑA 4: VENTAS MENSUALES FACTURABLES (MATRIZ DESPLEGABLE)
+  // =========================================================================
+  const formatearColumnaMesCorto = (mesClave: string): string => {
+    const [anio, mes] = mesClave.split('-');
+    const fecha = new Date(Number(anio), Number(mes) - 1, 1);
+    const label = fecha.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  };
+
+  const matrizFacturableMensual = useMemo(() => {
+    // 1. Filtrar exclusivamente acuerdos facturables (POR_FACTURAR y FACTURADO)
+    const dealsFacturables = dealsFiltradosGlobal.filter(deal => {
+      const stage = (deal.stage || '').toUpperCase().trim();
+      const esFacturable = stage === 'POR_FACTURAR' || stage === 'FACTURADO';
+      if (!esFacturable) return false;
+
+      if (filtroEtapaFacturableP4 === 'POR_FACTURAR' && stage !== 'POR_FACTURAR') return false;
+      if (filtroEtapaFacturableP4 === 'FACTURADO' && stage !== 'FACTURADO') return false;
+
+      if (clientesSeleccionadosP4.length > 0) {
+        const cId = deal.cliente_id?.toString() || "";
+        if (!clientesSeleccionadosP4.some(c => c.toString() === cId)) return false;
+      }
+
+      if (vendedoresSeleccionadosP4.length > 0) {
+        const vId = deal.vendedor_id?.toString() || "";
+        if (!vendedoresSeleccionadosP4.some(v => v.toString() === vId)) return false;
+      }
+
+      if (busquedaMatrizP4.trim()) {
+        const q = busquedaMatrizP4.toLowerCase().trim();
+        const nombreEmpresa = (deal.cliente?.nombre || '').toLowerCase();
+        const numCliente = String(deal.cliente?.numero_cliente || '').toLowerCase();
+        const tituloAcuerdo = (deal.titulo || '').toLowerCase();
+        if (!nombreEmpresa.includes(q) && !numCliente.includes(q) && !tituloAcuerdo.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // 2. Calcular prorrateo mensual por cada acuerdo y recolectar meses y años disponibles
+    const setMeses = new Set<string>();
+    const setAnios = new Set<string>();
+
+    const dealsConDesglose = dealsFacturables.map(deal => {
+      let prorrateo = calcularProrrateoDeal(deal);
+      if (prorrateo.length === 0 && deal.fecha_desde && deal.fecha_hasta) {
+        prorrateo = calcularProrrateoPorDias(
+          deal.fecha_desde,
+          deal.fecha_hasta,
+          Number(deal.amount || 0),
+          Number(deal.monto_facturado || 0)
+        );
+      }
+
+      const montosPorMes: Record<string, number> = {};
+      prorrateo.forEach(m => {
+        const anioMes = m.mesClave.substring(0, 4);
+        setAnios.add(anioMes);
+
+        if (filtroAnioP4 === 'TODOS' || anioMes === filtroAnioP4) {
+          setMeses.add(m.mesClave);
+          montosPorMes[m.mesClave] = (montosPorMes[m.mesClave] || 0) + Number(m.montoTotal || 0);
+        }
+      });
+
+      return { deal, montosPorMes };
+    });
+
+    const mesesOrdenados = Array.from(setMeses).sort();
+    const aniosDisponibles = Array.from(setAnios).sort();
+
+    // 3. Agrupar jerárquicamente: Empresa (N° Cliente) -> Acuerdos
+    interface AcuerdoFila {
+      id: number;
+      titulo: string;
+      stage: string;
+      channel: string;
+      vendedorNombre: string;
+      fechaDesde: string;
+      fechaHasta: string;
+      montosPorMes: Record<string, number>;
+      totalAcuerdo: number;
+    }
+
+    interface EmpresaFila {
+      clienteKey: string;
+      clienteId: number;
+      empresaNombre: string;
+      numeroCliente: string;
+      totalesPorMes: Record<string, number>;
+      totalEmpresa: number;
+      acuerdos: AcuerdoFila[];
+    }
+
+    const mapaEmpresas: Record<string, EmpresaFila> = {};
+
+    dealsConDesglose.forEach(({ deal, montosPorMes }) => {
+      const totalAcuerdo = mesesOrdenados.reduce((acc, mKey) => acc + (montosPorMes[mKey] || 0), 0);
+      if (filtroAnioP4 !== 'TODOS' && totalAcuerdo <= 0) return;
+
+      const cId = deal.cliente_id || 0;
+      const empresaNombre = deal.cliente?.nombre || 'Sin Cliente Asignado';
+      const numeroCliente = deal.cliente?.numero_cliente ? String(deal.cliente.numero_cliente) : '-';
+      const clienteKey = cId ? `cliente-${cId}` : `nombre-${empresaNombre}`;
+
+      if (!mapaEmpresas[clienteKey]) {
+        mapaEmpresas[clienteKey] = {
+          clienteKey,
+          clienteId: cId,
+          empresaNombre,
+          numeroCliente,
+          totalesPorMes: {},
+          totalEmpresa: 0,
+          acuerdos: []
+        };
+      }
+
+      mesesOrdenados.forEach(mKey => {
+        const val = montosPorMes[mKey] || 0;
+        mapaEmpresas[clienteKey].totalesPorMes[mKey] = (mapaEmpresas[clienteKey].totalesPorMes[mKey] || 0) + val;
+      });
+      mapaEmpresas[clienteKey].totalEmpresa += totalAcuerdo;
+
+      mapaEmpresas[clienteKey].acuerdos.push({
+        id: deal.id,
+        titulo: deal.titulo || `Acuerdo #${deal.id}`,
+        stage: deal.stage || 'POR_FACTURAR',
+        channel: deal.channel || 'Digital',
+        vendedorNombre: deal.vendedor?.nombre || 'Sin asignar',
+        fechaDesde: deal.fecha_desde || '-',
+        fechaHasta: deal.fecha_hasta || '-',
+        montosPorMes,
+        totalAcuerdo
+      });
+    });
+
+    const empresasOrdenadas = Object.values(mapaEmpresas)
+      .map(emp => ({
+        ...emp,
+        acuerdos: emp.acuerdos.sort((a, b) => b.totalAcuerdo - a.totalAcuerdo)
+      }))
+      .sort((a, b) => b.totalEmpresa - a.totalEmpresa);
+
+    // 4. Totales globales por columna de mes y gran total
+    const totalesPorColumnaMes: Record<string, number> = {};
+    mesesOrdenados.forEach(mKey => {
+      totalesPorColumnaMes[mKey] = empresasOrdenadas.reduce(
+        (acc, emp) => acc + (emp.totalesPorMes[mKey] || 0),
+        0
+      );
+    });
+
+    const granTotalGeneral = empresasOrdenadas.reduce((acc, emp) => acc + emp.totalEmpresa, 0);
+    const totalAcuerdosCount = empresasOrdenadas.reduce((acc, emp) => acc + emp.acuerdos.length, 0);
+
+    return {
+      mesesOrdenados,
+      aniosDisponibles,
+      empresasOrdenadas,
+      totalesPorColumnaMes,
+      granTotalGeneral,
+      totalAcuerdosCount
+    };
+  }, [
+    dealsFiltradosGlobal,
+    filtroEtapaFacturableP4,
+    clientesSeleccionadosP4,
+    vendedoresSeleccionadosP4,
+    busquedaMatrizP4,
+    filtroAnioP4
+  ]);
+
+  const toggleEmpresaExpandidaP4 = (clienteKey: string) => {
+    setEmpresasExpandidasP4(prev => ({
+      ...prev,
+      [clienteKey]: !prev[clienteKey]
+    }));
+  };
+
+  const expandirTodasEmpresasP4 = () => {
+    const nuevoMapa: Record<string, boolean> = {};
+    matrizFacturableMensual.empresasOrdenadas.forEach(emp => {
+      nuevoMapa[emp.clienteKey] = true;
+    });
+    setEmpresasExpandidasP4(nuevoMapa);
+  };
+
+  const colapsarTodasEmpresasP4 = () => {
+    setEmpresasExpandidasP4({});
+  };
+
+  const handleExportarExcelMatrizFacturable = () => {
+    const { mesesOrdenados, empresasOrdenadas, totalesPorColumnaMes, granTotalGeneral } = matrizFacturableMensual;
+    const headers = [
+      'Nivel',
+      'N° Cliente',
+      'Empresa / Acuerdo',
+      'Estado / Cant. Acuerdos',
+      'Vigencia',
+      ...mesesOrdenados.map(m => formatearColumnaMesCorto(m)),
+      'Total Facturable ($)'
+    ];
+
+    const rows: any[][] = [
+      ['MATRIZ MENSUAL DE VENTAS FACTURABLES - CARREFOUR MEDIA'],
+      ['Fecha de Emisión:', new Date().toLocaleDateString('es-AR')],
+      ['Filtro Estado:', filtroEtapaFacturableP4],
+      [],
+      headers
+    ];
+
+    empresasOrdenadas.forEach(emp => {
+      rows.push([
+        'EMPRESA',
+        emp.numeroCliente,
+        emp.empresaNombre,
+        `${emp.acuerdos.length} acuerdo(s)`,
+        '-',
+        ...mesesOrdenados.map(m => Math.round(emp.totalesPorMes[m] || 0)),
+        Math.round(emp.totalEmpresa)
+      ]);
+
+      emp.acuerdos.forEach(ac => {
+        rows.push([
+          '  └ ACUERDO',
+          emp.numeroCliente,
+          `   ${ac.titulo}`,
+          ac.stage,
+          `${ac.fechaDesde} al ${ac.fechaHasta}`,
+          ...mesesOrdenados.map(m => Math.round(ac.montosPorMes[m] || 0)),
+          Math.round(ac.totalAcuerdo)
+        ]);
+      });
+    });
+
+    rows.push([]);
+    rows.push([
+      'TOTAL GENERAL',
+      '',
+      'TOTAL VENTAS FACTURABLES',
+      '',
+      '',
+      ...mesesOrdenados.map(m => Math.round(totalesPorColumnaMes[m] || 0)),
+      Math.round(granTotalGeneral)
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 36 },
+      { wch: 20 },
+      { wch: 24 },
+      ...mesesOrdenados.map(() => ({ wch: 16 })),
+      { wch: 20 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Ventas_Facturables_Mes');
+    XLSX.writeFile(wb, `Matriz_Ventas_Facturables_${new Date().toISOString().substring(0, 10)}.xlsx`);
+  };
+
+  // =========================================================================
   // CÁLCULOS PESTAÑA 3: GESTIÓN COMERCIAL & RENDIMIENTO
   // =========================================================================
   const analisisVendedores = useMemo(() => {
     const etapas = ['COTIZADO', 'OPORTUNIDAD', 'POR_FACTURAR', 'FACTURADO', 'PERDIDO'];
 
-    let listaVendedoresObjetivo = usuarios.filter(u => 
+    let listaVendedoresObjetivo = usuarios.filter(u =>
       u.rol === 'VENDEDOR' || deals.some(d => d.vendedor_id === u.id)
     );
 
     // MultiSelect de Vendedores a supervisar
     if (vendedoresSeleccionadosP3.length > 0) {
-      listaVendedoresObjetivo = listaVendedoresObjetivo.filter(u => 
+      listaVendedoresObjetivo = listaVendedoresObjetivo.filter(u =>
         vendedoresSeleccionadosP3.some(id => id.toString() === u.id.toString())
       );
     }
@@ -470,12 +745,13 @@ export default function DashboardPage() {
         const { desde, hasta } = calcularLimitesTemporales;
         if (desde && d.fecha_hasta && d.fecha_hasta < desde) return false;
         if (hasta && d.fecha_desde && d.fecha_desde > hasta) return false;
+
         return true;
       });
 
       // MultiSelect de Etapas del Pipeline
       if (etapasSeleccionadasP3.length > 0) {
-        dealsDelVendedor = dealsDelVendedor.filter(d => 
+        dealsDelVendedor = dealsDelVendedor.filter(d =>
           etapasSeleccionadasP3.some(st => st.toString() === (d.stage || 'COTIZADO'))
         );
       }
@@ -491,6 +767,7 @@ export default function DashboardPage() {
       dealsDelVendedor.forEach(d => {
         const stage = d.stage || 'COTIZADO';
         const monto = Number(d.amount || 0);
+
         if (pipelineEtapas[stage]) {
           pipelineEtapas[stage].monto += monto;
           pipelineEtapas[stage].cantidad += 1;
@@ -520,16 +797,16 @@ export default function DashboardPage() {
       const totalMontoCerrable = totalFacturadoVend + totalPerdidoVend;
       const winRate = totalMontoCerrable > 0 ? (totalFacturadoVend / totalMontoCerrable) * 100 : 0;
 
-      const ticketPromedio = pipelineEtapas['FACTURADO'].cantidad > 0 
-        ? totalFacturadoVend / pipelineEtapas['FACTURADO'].cantidad 
+      const ticketPromedio = pipelineEtapas['FACTURADO'].cantidad > 0
+        ? totalFacturadoVend / pipelineEtapas['FACTURADO'].cantidad
         : 0;
 
-      const tiempoPromedioDias = cantidadCerrados > 0 
-        ? Math.round(sumaDiasCierre / cantidadCerrados) 
+      const tiempoPromedioDias = cantidadCerrados > 0
+        ? Math.round(sumaDiasCierre / cantidadCerrados)
         : 0;
 
-      const descuentoPromedio = cantidadConDescuento > 0 
-        ? Math.round((sumaDescuentos / cantidadConDescuento) * 10) / 10 
+      const descuentoPromedio = cantidadConDescuento > 0
+        ? Math.round((sumaDescuentos / cantidadConDescuento) * 10) / 10
         : 0;
 
       const forecastPonderado = (totalCotizadoVend * 0.25) + (totalOportunidadVend * 0.50) + (totalPorFacturarVend * 0.90) + totalFacturadoVend;
@@ -648,7 +925,7 @@ export default function DashboardPage() {
         t.formato || 'Hipermercado',
         t.cantidadDeals,
         t.montoAsignado,
-        t.campañas.join(', ') || 'Sin campañas'
+        t.campanas.join(', ') || 'Sin campañas'
       ]);
     });
 
@@ -709,7 +986,7 @@ export default function DashboardPage() {
       ['ANÁLISIS DE RENDIMIENTO COMERCIAL Y PIPELINE', `Fecha: ${fechaDescarga}`],
       [],
       [
-        'Vendedor', 'Rol', 'Total Campañas', 'Cotizado ($)', 'Oportunidad ($)', 
+        'Vendedor', 'Rol', 'Total Campañas', 'Cotizado ($)', 'Oportunidad ($)',
         'Por Facturar ($)', 'Facturado ($)', 'Perdido ($)', 'Forecast Ponderado ($)',
         'Win Rate (%)', 'Ticket Promedio ($)', 'Ciclo Cierre (Días)', 'Desc. Promedio (%)'
       ]
@@ -778,7 +1055,7 @@ export default function DashboardPage() {
         </div>
 
         {/* NAVEGACIÓN POR PESTAÑAS */}
-        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 shadow-md">
+        <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 shadow-md">
           <button
             onClick={() => setActiveTab('general')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -801,6 +1078,18 @@ export default function DashboardPage() {
           >
             <span className="material-symbols-outlined text-sm">storefront</span>
             Operaciones & Tiendas
+          </button>
+
+          <button
+            onClick={() => setActiveTab('facturacion')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'facturacion'
+                ? 'bg-emerald-500 text-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900'
+            }`}
+          >
+            <span className="material-symbols-outlined text-sm">calendar_month</span>
+            Ventas Mensuales Facturables
           </button>
 
           {esGestion && (
@@ -910,6 +1199,11 @@ export default function DashboardPage() {
                 setFormatosSeleccionadosP2([]);
                 setTiendasSeleccionadasP2([]);
                 setFiltroVigenciaOperativa('TODAS');
+                setClientesSeleccionadosP4([]);
+                setVendedoresSeleccionadosP4([]);
+                setFiltroEtapaFacturableP4('TODAS_FACTURABLES');
+                setFiltroAnioP4('TODOS');
+                setBusquedaMatrizP4('');
                 setVendedoresSeleccionadosP3([]);
                 setEtapasSeleccionadasP3([]);
                 setUmbralAgingDias(20);
@@ -933,7 +1227,6 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="space-y-6 animate-fade-in">
-
           {/* ========================================================================= */}
           {/* PESTAÑA 1: VISIÓN GENERAL & VENTAS */}
           {/* ========================================================================= */}
@@ -1006,6 +1299,7 @@ export default function DashboardPage() {
                   <h3 className="text-3xl font-extrabold text-white">${kpisGlobales.totalContratado.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
                   <span className="text-[10px] text-slate-500 mt-1 block">{kpisGlobales.cantidadTotalDeals} acuerdos comerciales</span>
                 </div>
+
                 <div className="bg-slate-900/60 border border-white/10 p-5 rounded-2xl backdrop-blur-md">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Facturado Histórico Real</p>
                   <h3 className="text-3xl font-extrabold text-emerald-400">${kpisGlobales.totalFacturado.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
@@ -1013,11 +1307,13 @@ export default function DashboardPage() {
                     {kpisGlobales.totalContratado > 0 ? ((kpisGlobales.totalFacturado / kpisGlobales.totalContratado) * 100).toFixed(1) : 0}% de ejecución
                   </span>
                 </div>
+
                 <div className="bg-slate-900/60 border border-white/10 p-5 rounded-2xl backdrop-blur-md">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Deuda Pendiente de Facturar</p>
                   <h3 className="text-3xl font-extrabold text-amber-400">${kpisGlobales.totalDeuda.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
                   <span className="text-[10px] text-amber-500/80 mt-1 block">Saldo devengable activo</span>
                 </div>
+
                 <div className="bg-slate-900/60 border border-white/10 p-5 rounded-2xl backdrop-blur-md">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Régimen Reclasificado</p>
                   <h3 className="text-3xl font-extrabold text-purple-400">${kpisGlobales.totalReclasificados.toLocaleString(undefined, { maximumFractionDigits: 0 })}</h3>
@@ -1226,11 +1522,10 @@ export default function DashboardPage() {
                         <div>
                           <h4 className="font-bold text-base text-white">{t.nombre}</h4>
                           <span className="text-xs text-slate-400">
-                            {t.formato || 'Hipermercado'} • {t.elementosOperativos.length} elementos filtrados
+                            {t.formato || 'Hipermercado'} · {t.elementosOperativos.length} elementos filtrados
                           </span>
                         </div>
                       </div>
-
                       <div className="flex items-center gap-3">
                         <span className="text-xs text-slate-400">Ingreso Asignado:</span>
                         <span className="font-mono font-bold text-emerald-400 text-sm">
@@ -1250,7 +1545,7 @@ export default function DashboardPage() {
                               <div key={index} className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-lg flex items-center justify-between text-xs">
                                 <div>
                                   <span className="font-bold text-white block">{el.elementoNombre}</span>
-                                  <span className="text-[10px] text-cyan-400">{el.clienteNombre} — {el.dealTitulo}</span>
+                                  <span className="text-[10px] text-cyan-400">{el.clienteNombre} · {el.dealTitulo}</span>
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[10px] text-slate-400 block font-mono">{el.fechaDesde} al {el.fechaHasta}</span>
@@ -1269,7 +1564,6 @@ export default function DashboardPage() {
                           <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Renders e Imágenes</p>
                           <span className="text-[10px] text-slate-400 font-mono">{t.rendersOperativos.length} archivos</span>
                         </div>
-
                         {t.rendersOperativos.length === 0 ? (
                           <div className="p-4 bg-slate-950/50 rounded-lg border border-dashed border-slate-800 text-center">
                             <span className="material-symbols-outlined text-slate-600 text-2xl block mb-1">image_not_supported</span>
@@ -1296,6 +1590,309 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* PESTAÑA 4: VENTAS MENSUALES FACTURABLES (FILAS DESPLEGABLES POR EMPRESA)  */}
+          {/* ========================================================================= */}
+          {activeTab === 'facturacion' && (
+            <div className="space-y-6">
+              {/* SUB-FILTROS DE LA MATRIZ FACTURABLE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                <MultiSelect
+                  label="Empresas / Clientes"
+                  placeholder="Todas las empresas"
+                  options={opcionesClientes}
+                  selectedValues={clientesSeleccionadosP4}
+                  onChange={setClientesSeleccionadosP4}
+                />
+
+                <MultiSelect
+                  label="Vendedor / Responsable"
+                  placeholder="Todos los vendedores"
+                  options={opcionesVendedores}
+                  selectedValues={vendedoresSeleccionadosP4}
+                  onChange={setVendedoresSeleccionadosP4}
+                />
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Estado Facturable</label>
+                  <select
+                    value={filtroEtapaFacturableP4}
+                    onChange={(e) => setFiltroEtapaFacturableP4(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-700 text-emerald-400 text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-400"
+                  >
+                    <option value="TODAS_FACTURABLES">Por Facturar + Facturado</option>
+                    <option value="POR_FACTURAR">Solo Por Facturar</option>
+                    <option value="FACTURADO">Solo Facturado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Año de Devengamiento</label>
+                  <select
+                    value={filtroAnioP4}
+                    onChange={(e) => setFiltroAnioP4(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-400"
+                  >
+                    <option value="TODOS">Todos los Meses</option>
+                    {matrizFacturableMensual.aniosDisponibles.map(anio => (
+                      <option key={anio} value={anio}>Año {anio}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Buscar Empresa / Acuerdo</label>
+                  <input
+                    type="text"
+                    value={busquedaMatrizP4}
+                    onChange={(e) => setBusquedaMatrizP4(e.target.value)}
+                    placeholder="Nombre, N° cliente o campaña..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pl-8 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+                  />
+                  <span className="material-symbols-outlined text-slate-500 text-sm absolute left-2.5 top-7">search</span>
+                </div>
+              </div>
+
+              {/* RESUMEN RÁPIDO Y ACCIONES DE TABLA */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/60 border border-white/10 p-4 rounded-xl backdrop-blur-md">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Ventas Facturables</span>
+                    <span className="text-2xl font-extrabold text-emerald-400 font-mono">
+                      ${matrizFacturableMensual.granTotalGeneral.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                  <div className="h-8 w-px bg-slate-800 hidden sm:block"></div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Empresas</span>
+                    <span className="text-base font-bold text-white font-mono">
+                      {matrizFacturableMensual.empresasOrdenadas.length}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Acuerdos Facturables</span>
+                    <span className="text-base font-bold text-cyan-400 font-mono">
+                      {matrizFacturableMensual.totalAcuerdosCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={expandirTodasEmpresasP4}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">unfold_more</span>
+                    Expandir Todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={colapsarTodasEmpresasP4}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">unfold_less</span>
+                    Reducir Todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportarExcelMatrizFacturable}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-sm">download</span>
+                    Exportar Matriz (Excel)
+                  </button>
+                </div>
+              </div>
+
+              {/* TABLA DINÁMICA CON FILAS AMPLIABLES Y REDUCIBLES */}
+              <section className="bg-slate-900/60 border border-white/10 rounded-xl p-6 backdrop-blur-md space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-3">
+                  <div>
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-400">table_chart</span>
+                      Proyección Mensual de Ventas Facturables por Empresa y Acuerdo
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Haz clic sobre cada empresa para desplegar o reducir sus acuerdos individuales. Incluye únicamente acuerdos en etapa <span className="text-emerald-400 font-semibold">Por Facturar</span> y <span className="text-emerald-400 font-semibold">Facturado</span>.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">
+                    {matrizFacturableMensual.mesesOrdenados.length} meses proyectados
+                  </span>
+                </div>
+
+                {matrizFacturableMensual.empresasOrdenadas.length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-sm italic">
+                    No se encontraron ventas facturables que coincidan con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[650px] border border-slate-800 rounded-xl">
+                    <table className="w-full text-left text-xs text-slate-300 border-collapse">
+                      <thead className="text-[11px] text-slate-300 uppercase bg-slate-950 sticky top-0 z-20 border-b border-slate-700">
+                        <tr>
+                          <th className="p-3 sticky left-0 z-30 bg-slate-950 min-w-[260px] border-r border-slate-800">
+                            Empresa / Acuerdo
+                          </th>
+                          <th className="p-3 sticky left-[260px] z-30 bg-slate-950 min-w-[120px] border-r border-slate-800 text-center">
+                            N° Cliente
+                          </th>
+                          {matrizFacturableMensual.mesesOrdenados.map(mesKey => (
+                            <th key={mesKey} className="p-3 text-right min-w-[125px] font-mono">
+                              {formatearColumnaMesCorto(mesKey)}
+                            </th>
+                          ))}
+                          <th className="p-3 text-right min-w-[140px] bg-slate-900 text-emerald-400 font-bold border-l border-slate-800">
+                            Total Empresa / Acuerdo
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-slate-800/70">
+                        {matrizFacturableMensual.empresasOrdenadas.map(emp => {
+                          const isExpanded = !!empresasExpandidasP4[emp.clienteKey];
+                          return (
+                            <React.Fragment key={emp.clienteKey}>
+                              {/* FILA PADRE: EMPRESA */}
+                              <tr
+                                onClick={() => toggleEmpresaExpandidaP4(emp.clienteKey)}
+                                className="bg-slate-900/90 hover:bg-slate-800/80 cursor-pointer transition-colors group"
+                              >
+                                <td className="p-3 sticky left-0 z-10 bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800">
+                                  <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-base text-emerald-400 transition-transform">
+                                      {isExpanded ? 'expand_more' : 'chevron_right'}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <span className="font-bold text-white text-xs block truncate">
+                                        {emp.empresaNombre}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400">
+                                        {emp.acuerdos.length} {emp.acuerdos.length === 1 ? 'acuerdo' : 'acuerdos'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td className="p-3 sticky left-[260px] z-10 bg-slate-900 group-hover:bg-slate-800 border-r border-slate-800 text-center font-mono text-xs text-cyan-400 font-semibold">
+                                  {emp.numeroCliente}
+                                </td>
+
+                                {matrizFacturableMensual.mesesOrdenados.map(mesKey => {
+                                  const valorMes = emp.totalesPorMes[mesKey] || 0;
+                                  return (
+                                    <td
+                                      key={mesKey}
+                                      className={`p-3 text-right font-mono text-xs ${
+                                        valorMes > 0 ? 'text-white font-semibold' : 'text-slate-600'
+                                      }`}
+                                    >
+                                      {valorMes > 0
+                                        ? `$${Math.round(valorMes).toLocaleString('es-AR')}`
+                                        : '-'}
+                                    </td>
+                                  );
+                                })}
+
+                                <td className="p-3 text-right font-mono text-xs font-extrabold text-emerald-400 bg-emerald-950/15 border-l border-slate-800">
+                                  ${Math.round(emp.totalEmpresa).toLocaleString('es-AR')}
+                                </td>
+                              </tr>
+
+                              {/* FILAS HIJAS: ACUERDOS DE LA EMPRESA (DESPLEGABLES) */}
+                              {isExpanded &&
+                                emp.acuerdos.map(ac => (
+                                  <tr
+                                    key={ac.id}
+                                    className="bg-slate-950/75 hover:bg-slate-900/70 transition-colors"
+                                  >
+                                    <td className="py-2.5 px-3 pl-9 sticky left-0 z-10 bg-slate-950 border-r border-slate-800/80">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-slate-600 font-mono select-none">└</span>
+                                        <div className="min-w-0">
+                                          <span className="font-medium text-slate-200 text-xs block truncate">
+                                            {ac.titulo}
+                                          </span>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <span
+                                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                                ac.stage === 'FACTURADO'
+                                                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                              }`}
+                                            >
+                                              {ac.stage === 'FACTURADO' ? 'FACTURADO' : 'POR FACTURAR'}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500 font-mono">
+                                              {ac.fechaDesde} → {ac.fechaHasta}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+
+                                    <td className="py-2.5 px-3 sticky left-[260px] z-10 bg-slate-950 border-r border-slate-800/80 text-center font-mono text-[11px] text-slate-500">
+                                      #{ac.id}
+                                    </td>
+
+                                    {matrizFacturableMensual.mesesOrdenados.map(mesKey => {
+                                      const valAcuerdoMes = ac.montosPorMes[mesKey] || 0;
+                                      return (
+                                        <td
+                                          key={mesKey}
+                                          className={`py-2.5 px-3 text-right font-mono text-[11px] ${
+                                            valAcuerdoMes > 0 ? 'text-slate-300' : 'text-slate-700'
+                                          }`}
+                                        >
+                                          {valAcuerdoMes > 0
+                                            ? `$${Math.round(valAcuerdoMes).toLocaleString('es-AR')}`
+                                            : '-'}
+                                        </td>
+                                      );
+                                    })}
+
+                                    <td className="py-2.5 px-3 text-right font-mono text-[11px] font-bold text-cyan-300 bg-slate-900/40 border-l border-slate-800/80">
+                                      ${Math.round(ac.totalAcuerdo).toLocaleString('es-AR')}
+                                    </td>
+                                  </tr>
+                                ))}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+
+                      {/* FILA DE TOTALES GENERALES POR MES */}
+                      <tfoot className="bg-slate-950 border-t-2 border-emerald-500/40 sticky bottom-0 z-20">
+                        <tr>
+                          <td className="p-3 sticky left-0 z-30 bg-slate-950 font-extrabold text-xs text-white uppercase border-r border-slate-800">
+                            Total Ventas Facturables
+                          </td>
+                          <td className="p-3 sticky left-[260px] z-30 bg-slate-950 text-center font-mono text-xs text-slate-400 border-r border-slate-800">
+                            {matrizFacturableMensual.empresasOrdenadas.length} emp.
+                          </td>
+                          {matrizFacturableMensual.mesesOrdenados.map(mesKey => {
+                            const totCol = matrizFacturableMensual.totalesPorColumnaMes[mesKey] || 0;
+                            return (
+                              <td
+                                key={mesKey}
+                                className="p-3 text-right font-mono text-xs font-extrabold text-emerald-400"
+                              >
+                                ${Math.round(totCol).toLocaleString('es-AR')}
+                              </td>
+                            );
+                          })}
+                          <td className="p-3 text-right font-mono text-sm font-extrabold text-emerald-300 bg-emerald-950/30 border-l border-slate-800">
+                            ${Math.round(matrizFacturableMensual.granTotalGeneral).toLocaleString('es-AR')}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
@@ -1357,7 +1954,6 @@ export default function DashboardPage() {
                   <span className="material-symbols-outlined text-purple-400">stacked_line_chart</span>
                   Matriz de Pipeline por Vendedor y Etapa
                 </h4>
-
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-slate-300">
                     <thead className="text-[10px] text-slate-400 uppercase bg-slate-950/80 sticky top-0 z-10">
@@ -1376,7 +1972,7 @@ export default function DashboardPage() {
                         <tr key={vend.vendedorId} className="hover:bg-slate-800/40 transition-colors">
                           <td className="p-3">
                             <span className="font-bold text-white block text-xs">{vend.nombre}</span>
-                            <span className="text-[10px] text-slate-500">{vend.rol} • {vend.totalDeals} acuerdos</span>
+                            <span className="text-[10px] text-slate-500">{vend.rol} · {vend.totalDeals} acuerdos</span>
                           </td>
                           <td className="p-3 text-right font-mono text-xs text-slate-400">
                             ${vend.pipelineEtapas['COTIZADO'].monto.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -1414,7 +2010,6 @@ export default function DashboardPage() {
                   <span className="material-symbols-outlined text-purple-400">speed</span>
                   Indicadores de Eficacia, Velocidad de Cierre y Disciplina Comercial
                 </h4>
-
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-slate-300">
                     <thead className="text-[10px] text-slate-400 uppercase bg-slate-950/80 sticky top-0 z-10">
@@ -1505,7 +2100,7 @@ export default function DashboardPage() {
                               ${a.monto.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </td>
                             <td className="p-3 text-center font-mono text-xs font-bold text-amber-400">
-                              {a.diasAntiguedad} días
+                              {a.diasAntiguedad} d
                             </td>
                             <td className="p-3 text-center">
                               {a.esCritico ? (

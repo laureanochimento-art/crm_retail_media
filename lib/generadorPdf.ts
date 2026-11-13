@@ -25,7 +25,6 @@ const formatearMesHeader = (claveMes: string): string => {
 
 const resolverNombreTienda = (tiendaRef: any, catalogoTiendas: Tienda[]): string => {
   if (!tiendaRef) return 'Sucursal no asignada';
-  
   if (typeof tiendaRef === 'object' && tiendaRef.nombre) {
     return tiendaRef.numero ? `[${tiendaRef.numero}] ${tiendaRef.nombre}` : tiendaRef.nombre;
   }
@@ -33,15 +32,24 @@ const resolverNombreTienda = (tiendaRef: any, catalogoTiendas: Tienda[]): string
   const strRef = String(tiendaRef).trim();
   const numRef = Number(tiendaRef);
 
-  const encontrada = catalogoTiendas.find(t => 
-    String(t.id) === strRef || 
-    String(t.numero) === strRef ||
-    t.id === numRef ||
-    (!isNaN(numRef) && Number(t.numero) === numRef)
+  // 1. Prioridad absoluta: buscar por clave primaria (id) en todo el catálogo
+  const encontradaPorId = catalogoTiendas.find(
+    t => (!isNaN(numRef) && t.id === numRef) || String(t.id) === strRef
   );
+  if (encontradaPorId) {
+    return encontradaPorId.numero
+      ? `[${encontradaPorId.numero}] ${encontradaPorId.nombre}`
+      : encontradaPorId.nombre;
+  }
 
-  if (encontrada) {
-    return encontrada.numero ? `[${encontrada.numero}] ${encontrada.nombre}` : encontrada.nombre;
+  // 2. Respaldo: buscar por número de sucursal solo si no hubo coincidencia por id
+  const encontradaPorNumero = catalogoTiendas.find(
+    t => String(t.numero) === strRef || (!isNaN(numRef) && Number(t.numero) === numRef)
+  );
+  if (encontradaPorNumero) {
+    return encontradaPorNumero.numero
+      ? `[${encontradaPorNumero.numero}] ${encontradaPorNumero.nombre}`
+      : encontradaPorNumero.nombre;
   }
 
   return `Sucursal ${strRef}`;
@@ -52,10 +60,23 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   const fechaActual = new Date().toLocaleDateString('es-AR');
   const nombreCliente = deal.cliente?.nombre || 'CLIENTE NO ASIGNADO';
   const idCliente = deal.cliente?.numero_cliente || deal.cliente_id || '-';
+  const elementos = deal.elementos_json || [];
 
-  // Obtener catálogo completo de tiendas desde Supabase si faltan datos
+  // Obtener catálogo completo de tiendas desde Supabase si faltan datos o referencias
   let catalogoTiendas: Tienda[] = (deal.tiendas && deal.tiendas.length > 0) ? deal.tiendas : [];
-  if (catalogoTiendas.length === 0 || !catalogoTiendas[0]?.nombre) {
+  const idsReferenciados = elementos
+    .flatMap((el: any) => Array.isArray(el.tiendas) ? el.tiendas : [])
+    .filter((ref: any) => ref !== null && ref !== undefined && typeof ref !== 'object');
+
+  const faltanTiendasEnCatalogo = idsReferenciados.some((ref: any) => {
+    const strRef = String(ref).trim();
+    const numRef = Number(ref);
+    return !catalogoTiendas.some(
+      t => (!isNaN(numRef) && t.id === numRef) || String(t.id) === strRef
+    );
+  });
+
+  if (catalogoTiendas.length === 0 || !catalogoTiendas[0]?.nombre || faltanTiendasEnCatalogo) {
     try {
       const { data } = await supabase.from('tiendas').select('*').order('numero', { ascending: true });
       if (data && data.length > 0) {
@@ -99,6 +120,7 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
 
   doc.setFont("helvetica", "normal");
   currentY += (splitRemarcado.length * 5) + 15;
+
   doc.setFontSize(9);
   const textoCierre = `Esta propuesta es irrevocable y se considerará aceptada con la recepción de la primera Factura.`;
   doc.text(doc.splitTextToSize(textoCierre, 180), 14, currentY);
@@ -123,8 +145,6 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   let sumaBaseTotal = 0;
   let sumaAhorroTotal = 0;
   let sumaFinalTotal = 0;
-
-  const elementos = deal.elementos_json || [];
 
   if (elementos.length > 0) {
     elementos.forEach((item: any) => {
@@ -186,19 +206,20 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   });
 
   const prorrateo = calcularProrrateoDeal(deal);
-  
+
   // Cálculo exacto del impacto de la inflación
   const sumaBasePura = prorrateo.reduce((acc, m) => acc + m.montoBase, 0);
   const sumaTotalConInflacion = prorrateo.reduce((acc, m) => acc + m.montoConInflacion, 0);
   const totalMontoInflacion = Math.max(0, Math.round((sumaTotalConInflacion - sumaBasePura) * 100) / 100);
 
-  const montoTotalDealReal = Number(deal.amount) > 0 
-    ? Number(deal.amount) 
+  const montoTotalDealReal = Number(deal.amount) > 0
+    ? Number(deal.amount)
     : (sumaFinalTotal + totalMontoInflacion);
 
   let resumenY = (doc as any).lastAutoTable.finalY + 12;
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
+
   doc.text(`Subtotal Espacios:`, 14, resumenY);
   doc.text(`$ ${sumaBaseTotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 160, resumenY, { align: 'right' });
 
@@ -235,7 +256,6 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.text("Anexo II: Detalle del Acuerdo y Proyección Mensual", 14, 20);
-
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.text("Proyección económica mensualizada por elemento y sucursal (valores netos ajustados por inflación y bonificación):", 14, 27);
@@ -271,17 +291,16 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
 
     const fDesdeStr = item.fechaDesde || deal.fecha_desde || new Date().toISOString().split('T')[0];
     const fHastaStr = item.fechaHasta || deal.fecha_hasta || fDesdeStr;
-    
+
     const rawD1 = new Date(`${fDesdeStr}T00:00:00`);
     const rawD2 = new Date(`${fHastaStr}T00:00:00`);
     const dInicio = rawD1 <= rawD2 ? rawD1 : rawD2;
     const dFin = rawD1 <= rawD2 ? rawD2 : rawD1;
-
     const diffDias = Math.max(1, Math.ceil(Math.abs(dFin.getTime() - dInicio.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
     // Base neta real del elemento (con descuento de ítem y global ya prorrateados)
-    const baseFinalItem = item.precioFinalProrrateado !== undefined 
-      ? Number(item.precioFinalProrrateado) 
+    const baseFinalItem = item.precioFinalProrrateado !== undefined
+      ? Number(item.precioFinalProrrateado)
       : Math.max(0, Number(item.subtotal ?? item.precioLista ?? 0) - (item.montoDescuentoItem || 0));
 
     const basePorFila = cantTiendas > 0 ? (baseFinalItem / cantTiendas) : baseFinalItem;
@@ -317,12 +336,10 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
 
         totalFila += montoNetoMes;
         totalesPorColumnaMes[idx] += montoNetoMes;
-
         filaMeses.push(montoNetoMes > 0 ? `$${Math.round(montoNetoMes).toLocaleString('es-AR')}` : '-');
       });
 
       totalGeneralAnexo2 += totalFila;
-
       anexo2Rows.push([
         item.nombre || 'Elemento',
         nombreTienda,
@@ -369,7 +386,6 @@ export const generarAcuerdoPDF = async (deal: Deal, returnBase64: boolean = fals
     doc.setFont("helvetica", "normal");
 
     let yAdj = 30;
-
     for (let i = 0; i < deal.adjuntos.length; i++) {
       const adj = deal.adjuntos[i];
       const tipoLabel = adj.categoria ? adj.categoria.replace('_', ' ') : 'General';
